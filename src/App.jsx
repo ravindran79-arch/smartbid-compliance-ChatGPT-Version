@@ -1194,7 +1194,7 @@ const decrementMockUsage = (login) => {
         }
         return { ...prev, [login]: copy };
     });
-};\n\n
+};
 
 // --- StatCard sub-component for AdminDashboard ---
 const StatCard = ({ icon, label, value }) => (
