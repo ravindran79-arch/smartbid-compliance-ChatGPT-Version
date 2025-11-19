@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
-    Shield, User, HardDrive, Phone, Mail, Building, Trash2 
+    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Sliders 
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -10,7 +10,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { 
     getFirestore, collection, addDoc, onSnapshot, query, doc, setDoc, updateDoc, 
-    runTransaction, deleteDoc 
+    runTransaction, deleteDoc, where // <-- ADDED: where for RBAC filtering
 } from 'firebase/firestore';
 
 // --- CONSTANTS ---
@@ -98,18 +98,18 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
     }
 };
 
-// --- Utility Function to get Firestore Document Reference for Usage ---
+// --- Utility Function to get Firestore Document Reference for Usage (per-user) ---
 const getUsageDocRef = (db, userId) => {
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     // Path: /artifacts/{appId}/users/{userId}/usage_limits/main_tracker
     return doc(db, `artifacts/${appId}/users/${userId}/usage_limits`, 'main_tracker');
 };
 
-// --- Utility Function to get Firestore Collection Reference for Reports ---
-const getReportsCollectionRef = (db, userId) => {
+// --- NEW/UPDATED Utility Function to get Firestore Collection Reference for Reports (Global) ---
+const getReportsCollectionRef = (db) => {
     const appId = typeof __app_id !== 'undefined' ? '__app_id' : 'default-app-id';
-    // FIX: This path correctly scopes data by userId, ensuring isolation.
-    return collection(db, `artifacts/${appId}/users/${userId}/compliance_reports`);
+    // Path: /artifacts/{appId}/compliance_reports (Single collection for Admin access)
+    return collection(db, `artifacts/${appId}/compliance_reports`);
 };
 
 // --- Utility function to calculate the standard compliance percentage (Unweighted) ---
@@ -343,7 +343,7 @@ const AuthPage = ({
     };
     
     const authStatusText = isAuthReady && userId 
-        ? `You are currently logged in with User ID: ${userId}` 
+        ? `You are currently logged in with Firebase ID: ${userId}` 
         : "Attempting anonymous login...";
 
     return (
@@ -494,10 +494,10 @@ function App() {
 
     // --- MOCK AUTH STATE (Now a multi-user object - UPDATED DEFAULT USER DATA) ---
     const [mockUsers, setMockUsers] = useState({
-        "myuser": { password: "123", name: "My", role: "USER", designation: "Procurement Analyst", company: "BidCorp", email: "myuser@demo.com", phone: "555-1234" },
+        "myuser": { password: "123", name: "My User", role: "USER", designation: "Procurement Analyst", company: "BidCorp", email: "myuser@demo.com", phone: "555-1234" },
         // --- ADDED NEW USER: auditor/456 ---
-        "auditor": { password: "456", name: "Auditor", role: "USER", designation: "Junior Analyst", company: "AuditCo", email: "auditor@demo.com", phone: "555-9012" }, 
-        "admin": { password: "pass", name: "System", role: "ADMIN", designation: "Lead Administrator", company: "SmartBids Inc", email: "admin@smartbids.com", phone: "555-5678" }
+        "auditor": { password: "456", name: "Auditor Smith", role: "USER", designation: "Junior Analyst", company: "AuditCo", email: "auditor@demo.com", phone: "555-9012" }, 
+        "admin": { password: "pass", name: "System Admin", role: "ADMIN", designation: "Lead Administrator", company: "SmartBids Inc", email: "admin@smartbids.com", phone: "555-5678" }
     });
     const [currentUser, setCurrentUser] = useState(null); // { login, name, role }
 
@@ -505,7 +505,7 @@ function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null); 
-    const [userId, setUserId] = useState(null);
+    const [userId, setUserId] = useState(null); // Firebase Anonymous User ID
     const [reportsHistory, setReportsHistory] = useState([]);
     // --- NEW: Paywall State ---
     const [isPaywallOpen, setIsPaywallOpen] = useState(false); 
@@ -520,6 +520,7 @@ function App() {
 
     // --- EFFECT 1: Firebase Initialization and Auth ---
     useEffect(() => {
+        // ... (Initialization remains the same)
         try {
             const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
             const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -580,8 +581,10 @@ function App() {
                     const initialData = { 
                         initiatorChecks: 0, 
                         bidderChecks: 0, 
-                        isSubscribed: false // **UPDATED: New users start unsubscribed**
+                        isSubscribed: false 
                     };
+                    // Note: This non-transactional set helps initialize for the listener, 
+                    // but the transaction (incrementUsage) handles true atomic initialization.
                     setDoc(docRef, initialData).catch(e => console.error("Error creating usage doc:", e));
                     setUsageLimits(initialData);
                 }
@@ -589,18 +592,24 @@ function App() {
                 console.error("Error listening to usage limits:", error);
             });
 
-            // CRITICAL FIX: onSnapshot re-runs whenever userId changes, ensuring data isolation.
             return () => unsubscribe();
         }
     }, [db, userId]);
 
-    // --- EFFECT 3: Firestore Listener for Report History (Scoped by userId) ---
+    // --- EFFECT 3: Firestore Listener for Report History (RBAC Implemented) ---
     useEffect(() => {
-        if (db && userId) {
-            const reportsRef = getReportsCollectionRef(db, userId);
-            const q = query(reportsRef);
+        if (db && userId && currentUser) {
+            const reportsRef = getReportsCollectionRef(db); // Global collection
+            let reportsQuery = query(reportsRef);
 
-            const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+            // 1. RBAC Filtering Logic:
+            if (currentUser.role !== 'ADMIN') {
+                // Standard users only see their own reports, filtered by their mock login ID.
+                reportsQuery = query(reportsQuery, where('userLogin', '==', currentUser.login));
+            }
+            // Admin users see all reports (no 'where' filter needed).
+
+            const unsubscribeSnapshot = onSnapshot(reportsQuery, (snapshot) => {
                 const history = [];
                 snapshot.forEach((doc) => {
                     history.push({ id: doc.id, ...doc.data() });
@@ -611,13 +620,17 @@ function App() {
                 console.error("Error listening to reports:", error);
             });
 
-            // CRITICAL FIX: onSnapshot re-runs whenever userId changes, ensuring data isolation.
+            // CRITICAL FIX: Listener now depends on currentUser for RBAC
             return () => unsubscribeSnapshot();
+        } else {
+            // Clear history if we don't have a logged-in user or Firebase isn't ready
+            setReportsHistory([]); 
         }
-    }, [db, userId]);
+    }, [db, userId, currentUser]);
 
     // --- EFFECT 4: Safely load PDF.js and Mammoth.js Libraries ---
     useEffect(() => {
+        // ... (Library loading logic remains the same)
         const loadScript = (src, libraryName) => {
             return new Promise((resolve, reject) => {
                 if (document.querySelector(`script[src="${src}"]`)) {
@@ -627,7 +640,6 @@ function App() {
                 const script = document.createElement('script');
                 script.src = src;
                 script.onload = resolve;
-                // When an error occurs, reject the promise with a specific message.
                 script.onerror = (error) => reject(new Error(`Failed to load external script for ${libraryName}: ${src}`));
                 document.head.appendChild(script);
             });
@@ -636,7 +648,6 @@ function App() {
         const loadAllLibraries = async () => {
             // Load PDF.js
             try {
-                // Updated PDF.js CDN link to a more recent stable version for better compatibility
                 await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js", "PDF.js");
                 if (window.pdfjsLib) {
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -648,8 +659,6 @@ function App() {
             
             // Load Mammoth.js (for DOCX)
             try {
-                // Updated Mammoth.js CDN link to a highly stable version (1.4.15) 
-                // to resolve reported loading issues with 1.6.0 in some environments.
                 await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js", "Mammoth.js");
             } catch (e) {
                 console.error(e.message);
@@ -660,27 +669,42 @@ function App() {
         loadAllLibraries();
     }, []); 
 
-    // --- LOGIC: Increment Usage Count via Transaction (Atomic Counter) ---
+    // --- LOGIC: Increment Usage Count via Transaction (Atomic Counter FIX) ---
     const incrementUsage = async (roleKey) => {
         if (!db || !userId) return;
         const docRef = getUsageDocRef(db, userId);
-
+        
         try {
-            // Use a transaction for atomic increment
+            // FIX: Use a transaction with set to ensure atomic increment AND document creation if missing.
             await runTransaction(db, async (transaction) => {
                 const docSnap = await transaction.get(docRef);
                 
-                let currentData = docSnap.exists() 
-                    ? docSnap.data() 
-                    : { initiatorChecks: 0, bidderChecks: 0, isSubscribed: false };
+                let currentData;
+                
+                if (docSnap.exists()) {
+                    currentData = docSnap.data();
+                } else {
+                    // Initialize if the document does not exist
+                    currentData = { 
+                        initiatorChecks: 0, 
+                        bidderChecks: 0, 
+                        isSubscribed: false 
+                    };
+                }
 
+                // Calculate the new count (ensuring it starts from 0 if undefined)
                 const newCount = (currentData[roleKey] || 0) + 1;
-                // Only update the specific counter
-                transaction.update(docRef, { [roleKey]: newCount });
+                
+                // Update the currentData object
+                currentData[roleKey] = newCount;
+
+                // Use set to guarantee the document is created or fully updated atomically
+                transaction.set(docRef, currentData);
             });
             // State update happens via the onSnapshot listener in Effect 2
         } catch (e) {
             console.error("Transaction failed to update usage:", e);
+            setErrorMessage(`Failed to update usage count. Details: ${e.message}`);
         }
     };
 
@@ -689,7 +713,7 @@ function App() {
     const handleAnalyze = useCallback(async (role) => {
         const roleKey = 'bidderChecks'; // Standardized key for trial usage
 
-        // --- NEW: Paywall Check (Trial Enforcement) ---
+        // --- Paywall Check (Trial Enforcement) ---
         if (isTrialOver) {
             setIsPaywallOpen(true);
             setErrorMessage(`Trial limit reached (${usageLimits.bidderChecks}/${FREE_TRIAL_LIMIT}). Please upgrade for unlimited audits.`);
@@ -698,6 +722,12 @@ function App() {
         
         if (!RFQFile || !BidFile) {
             setErrorMessage("Please upload both the RFQ and the Bid documents.");
+            return;
+        }
+        
+        // Ensure we have a user and DB before proceeding to API and increment
+        if (!userId || !db) {
+            setErrorMessage("Authentication not ready. Please wait a moment or relog.");
             return;
         }
 
@@ -761,12 +791,12 @@ function App() {
         } finally {
             setLoading(false);
         }
-    }, [RFQFile, BidFile, isTrialOver, usageLimits.bidderChecks, incrementUsage]);
+    }, [RFQFile, BidFile, isTrialOver, usageLimits.bidderChecks, incrementUsage, userId, db]);
 
 
     // --- CORE LOGIC: Test Data Generation ---
     const generateTestData = useCallback(async () => {
-        // Mock RFQ content based on the demonstration documents (Risk Weights removed)
+        // ... (Test data generation logic remains the same)
         const mockRfqContent = `
 1. TECHNICAL: The proposed cloud solution must integrate bi-directionally with our legacy billing system via its existing REST/JSON API endpoints, as detailed in Appendix B. This is a mandatory core technical specification.
 2. FINANCIAL: Bidders must submit a Firm Fixed Price (FFP) quote for all services covering the first 12 calendar months of operation. Cost estimates or time-and-materials pricing will result in non-compliance.
@@ -817,21 +847,25 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
         }
     }, []);
 
-    // --- CORE LOGIC: Save Report ---
+    // --- CORE LOGIC: Save Report (UPDATED with RBAC fields) ---
     const saveReport = useCallback(async (role) => {
-        if (!db || !userId || !report) {
-            setErrorMessage("Database not ready or no report to save.");
+        if (!db || !userId || !report || !currentUser) {
+            setErrorMessage("Database not ready, no report, or no user context to save.");
             return;
         }
         setSaving(true);
         try {
-            const reportsRef = getReportsCollectionRef(db, userId);
+            const reportsRef = getReportsCollectionRef(db); // Global collection ref
             await addDoc(reportsRef, {
                 ...report,
                 rfqName: RFQFile?.name || 'Untitled RFQ',
                 bidName: BidFile?.name || 'Untitled Bid',
                 timestamp: Date.now(),
-                role: role, // Save the role used for the audit
+                role: role, 
+                // --- NEW RBAC/Identity Fields ---
+                firestoreUserId: userId,      // The anonymous Firebase user ID
+                userLogin: currentUser.login, // The mock user's unique login
+                userRole: currentUser.role    // The user's role (USER/ADMIN)
             });
             setErrorMessage("Report saved successfully to history!");
             setTimeout(() => setErrorMessage(null), 3000);
@@ -841,7 +875,7 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
         } finally {
             setSaving(false);
         }
-    }, [db, userId, report, RFQFile, BidFile]);
+    }, [db, userId, report, RFQFile, BidFile, currentUser]);
 
     // --- CORE LOGIC: Delete Report ---
     const deleteReport = useCallback(async (reportId, rfqName, bidName) => {
@@ -851,7 +885,7 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
         }
         setErrorMessage(`Deleting report: ${rfqName} vs ${bidName}...`);
         try {
-            const reportsRef = getReportsCollectionRef(db, userId);
+            const reportsRef = getReportsCollectionRef(db);
             const docRef = doc(reportsRef, reportId);
             await deleteDoc(docRef);
             setErrorMessage(`Report '${rfqName} vs ${bidName}' deleted successfully.`);
@@ -901,10 +935,10 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
                             bidTitle="Bid/Proposal Document" 
                             role="BIDDER" 
                             handleAnalyze={handleAnalyze} 
-                            usageLimit={FREE_TRIAL_LIMIT} // Pass the limit
-                            usageCount={usageLimits.bidderChecks} // Pass the current count
-                            isSubscribed={usageLimits.isSubscribed} // Pass subscription status
-                            isTrialOver={isTrialOver} // Pass the paywall check result
+                            usageLimit={FREE_TRIAL_LIMIT} 
+                            usageCount={usageLimits.bidderChecks} 
+                            isSubscribed={usageLimits.isSubscribed} 
+                            isTrialOver={isTrialOver} 
                             setCurrentPage={setCurrentPage} 
                             currentUser={currentUser} 
                             loading={loading} 
@@ -932,7 +966,15 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
             case PAGE.ADMIN: 
                 return <AdminDashboard setCurrentPage={setCurrentPage} currentUser={currentUser} usageLimits={usageLimits} reportsHistory={reportsHistory} allMockUsers={mockUsers} />;
             case PAGE.HISTORY: 
-                return <ReportHistory reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} isAuthReady={isAuthReady} userId={userId} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+                return <ReportHistory 
+                            reportsHistory={reportsHistory} 
+                            loadReportFromHistory={loadReportFromHistory} 
+                            deleteReport={deleteReport} 
+                            currentUser={currentUser} 
+                            setCurrentPage={setCurrentPage} 
+                            isAuthReady={isAuthReady} 
+                            userId={userId} // Still useful for diagnostics
+                        />;
             default: 
                 return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} userId={userId} isAuthReady={isAuthReady} errorMessage={errorMessage} mockUsers={mockUsers} setMockUsers={setMockUsers} setCurrentUser={setCurrentUser} />;
         }
@@ -1178,22 +1220,29 @@ const UserCard = ({ user }) => (
 
 // --- NEW AdminDashboard Component ---
 const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHistory, allMockUsers }) => {
-    const totalAudits = (usageLimits.initiatorChecks || 0) + (usageLimits.bidderChecks || 0);
+    // Calculate total audits from history, not just the single user's usageLimits, for a true admin view
+    const totalAudits = reportsHistory.length; 
+    const totalReportsByRole = reportsHistory.reduce((acc, report) => {
+        const role = report.userRole || 'UNKNOWN';
+        acc[role] = (acc[role] || 0) + 1;
+        return acc;
+    }, {});
+    
     const recentReports = reportsHistory.slice(0, 5); // Get 5 most recent
     // Process mock users into an array for easy rendering
     const userList = Object.entries(allMockUsers).map(([login, details]) => ({ login, ...details }));
 
-    // Conditional Subscription Status
+    // Conditional Subscription Status (using a common indicator, though admin can't see 'their' limits easily)
     const subStatus = usageLimits.isSubscribed 
         ? "PRO SUBSCRIBER (Unlimited)" 
-        : `TRIAL (${usageLimits.bidderChecks}/${FREE_TRIAL_LIMIT} Used)`;
+        : `TRIAL (${usageLimits.bidderChecks}/${FREE_TRIAL_LIMIT} Used - Self Usage)`;
     const subColor = usageLimits.isSubscribed ? 'text-green-400' : usageLimits.bidderChecks >= FREE_TRIAL_LIMIT ? 'text-red-400' : 'text-blue-400';
 
     return (
         <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 space-y-8">
             <div className="flex justify-between items-center border-b border-slate-700 pb-4">
                 <h2 className="text-3xl font-bold text-white flex items-center">
-                    <Shield className="w-8 h-8 mr-3 text-red-400"/> Admin Dashboard
+                    <Sliders className="w-8 h-8 mr-3 text-red-400"/> Admin Dashboard
                 </h2>
                 <button 
                     onClick={() => setCurrentPage(PAGE.COMPLIANCE_CHECK)}
@@ -1207,7 +1256,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
                     icon={<BarChart2 className="w-8 h-8 text-blue-400"/>} 
-                    label="Total Audits Run (All Users)" 
+                    label="Total Audits Saved (All Users)" 
                     value={totalAudits}
                 />
                 <StatCard 
@@ -1217,7 +1266,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
                 />
                 <StatCard 
                     icon={<Tag className={`w-8 h-8 ${subColor}`}/>} 
-                    label="Current System Status (User View)" 
+                    label="Last Logged-in User Status" 
                     value={<span className={`text-xl ${subColor}`}>{subStatus}</span>}
                 />
             </div>
@@ -1242,7 +1291,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
                             <div key={item.id} className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg border border-slate-700">
                                 <div>
                                     <p className="text-sm font-medium text-white">{item.bidName}</p>
-                                    <p className="text-xs text-slate-400">vs {item.rfqName}</p>
+                                    <p className="text-xs text-slate-400">vs {item.rfqName} (By: {item.userLogin || 'N/A'})</p>
                                 </div>
                                 <span className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleDateString()}</span>
                             </div>
@@ -1280,7 +1329,7 @@ const AuditPage = ({
         saveReport(role);
     };
 
-    // --- NEW: Conditional Back Button Logic ---
+    // --- Conditional Back Button Logic ---
     const handleBack = () => {
         if (currentUser && currentUser.role === 'ADMIN') {
             setCurrentPage(PAGE.ADMIN); // Admins go back to their dashboard
@@ -1363,7 +1412,7 @@ const AuditPage = ({
             </button>
 
             {/* Save Button (Conditional) */}
-            {report && userId && (
+            {report && userId && currentUser && (
                 <button 
                     onClick={handleSave} 
                     disabled={saving} 
@@ -1379,8 +1428,8 @@ const AuditPage = ({
     );
 };
 
-// --- ReportHistory Component ---
-const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, isAuthReady, userId, setCurrentPage, currentUser }) => {
+// --- ReportHistory Component (UPDATED RBAC Check) ---
+const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, currentUser, setCurrentPage }) => {
     
     // Utility function to group reports by RFQ Name and add compliance percentage
     const groupAndPrepareReports = (reports) => {
@@ -1414,7 +1463,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, is
         });
 
         let currentRank = 1;
-        let lastPercentage = -1; 
+        let lastPercentage = Infinity; // Start high for ranking logic
         
         return sortedReports.map((report, index) => {
             // Check for a score drop from the previous report
@@ -1439,20 +1488,29 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, is
         }
     };
 
-    if (!isAuthReady || !userId) {
+    // FIX: Only check for currentUser presence for history access
+    if (!currentUser) {
         return (
             <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 text-center">
-                <AlertTriangle className="w-5 h-5 mr-2 text-red-400 w-5 inline-block mr-2" /> History access is currently disabled due to authentication status.
+                <AlertTriangle className="w-5 h-5 mr-2 text-red-400 w-5 inline-block mr-2" /> 
+                History access is currently disabled. Please log in to view your reports.
                 <button onClick={() => setCurrentPage(PAGE.HOME)} className="mt-4 text-sm text-slate-400 hover:text-white flex items-center mx-auto" >
                     <ArrowLeft className="w-4 h-4 mr-1"/> Back to Login
                 </button>
             </div>
         );
     }
+    
+    // Inform user if their report count is restricted
+    const accessStatusText = currentUser.role === 'ADMIN' 
+        ? 'Showing all saved reports in the system.' 
+        : `Showing reports only for login: ${currentUser.login}`;
+        
+    const accessStatusColor = currentUser.role === 'ADMIN' ? 'text-red-400' : 'text-green-400';
 
     return (
         <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700">
-            <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
+            <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-3">
                 <h2 className="text-xl font-bold text-white flex items-center">
                     <Clock className="w-5 h-5 mr-2 text-amber-500"/> Saved Report History ({reportsHistory.length})
                 </h2 >
@@ -1460,6 +1518,10 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, is
                     <ArrowLeft className="w-4 h-4 mr-1"/> Back to Audit
                 </button>
             </div>
+            
+            <p className={`text-xs font-semibold mb-6 ${accessStatusColor}`}>
+                {accessStatusText}
+            </p>
 
             {reportsHistory.length === 0 ? (
                 <p className="text-slate-400 italic text-center py-8">
@@ -1488,7 +1550,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, deleteReport, is
                                                 <div className='flex items-center min-w-0 cursor-pointer' onClick={() => loadReportFromHistory(report)}>
                                                     <div className="text-xl font-extrabold text-white w-8 text-center">#{report.rank}</div>
                                                     <div className='ml-4 min-w-0'>
-                                                        <p className="text-sm font-semibold text-white truncate">{report.bidName}</p>
+                                                        <p className="text-sm font-semibold text-white truncate">{report.bidName} (By: {report.userLogin || 'N/A'})</p>
                                                         <p className="text-xs text-slate-400">{new Date(report.timestamp).toLocaleDateString()} at {new Date(report.timestamp).toLocaleTimeString()}</p>
                                                     </div>
                                                 </div>
