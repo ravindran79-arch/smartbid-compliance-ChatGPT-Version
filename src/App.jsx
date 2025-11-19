@@ -700,7 +700,7 @@ function App() {
 
     setLoading(true);
     setReport(null);
-    setErrorMessage(null);\n
+    setErrorMessage(null);
         setReport(null);
         setErrorMessage(null);
 
