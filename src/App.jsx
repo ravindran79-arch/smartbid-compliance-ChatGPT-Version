@@ -934,171 +934,162 @@ const DetailItem = ({ icon: Icon, label, value }) => (
 
 // --- UserCard sub-component for AdminDashboard ---
 const UserCard = ({ user }) => (
-    <div className="p-4 bg-slate-900 rounded-xl border border-slate-700 shadow-md">
-        <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
-            <p className="text-xl font-bold text-white flex items-center">
-                <User className="w-5 h-5 mr-2 text-amber-400"/>
-                {user.name}
-            </p>
-            <span className={`text-xs px-3 py-1 rounded-full font-semibold ${user.role === 'ADMIN' ? 'bg-red-500 text-white' : 'bg-green-500 text-slate-900'}`}>
-                {user.role}
-            </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-4">
-            <DetailItem icon={Briefcase} label="Designation" value={user.designation} />
-            <DetailItem icon={Building} label="Company" value={user.company} />
-            <DetailItem icon={Mail} label="Email" value={user.email} />
-            <DetailItem icon={Phone} label="Contact" value={user.phone || 'N/A'} />
-        </div>
-        <p className="text-xs text-slate-500 mt-3 border-t border-slate-800 pt-2">
-            Login ID: <span className='text-slate-400 font-mono'>{user.login}</span>
-        </p>
+  <div className="p-4 bg-slate-900 rounded-xl border border-slate-700 shadow-md">
+    <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
+      <p className="text-xl font-bold text-white flex items-center">
+        <User className="w-5 h-5 mr-2 text-amber-400" />
+        {user.name}
+      </p>
+      <span
+        className={`text-xs px-3 py-1 rounded-full font-semibold ${
+          user.role === 'ADMIN' ? 'bg-red-500 text-white' : 'bg-green-500 text-slate-900'
+        }`}
+      >
+        {user.role}
+      </span>
     </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-4">
+      <DetailItem icon={Briefcase} label="Designation" value={user.designation} />
+      <DetailItem icon={Building} label="Company" value={user.company} />
+      <DetailItem icon={Mail} label="Email" value={user.email} />
+      <DetailItem icon={Phone} label="Contact" value={user.phone || 'N/A'} />
+    </div>
+    <p className="text-xs text-slate-500 mt-3 border-t border-slate-800 pt-2">
+      Login ID: <span className="text-slate-400 font-mono">{user.login}</span>
+    </p>
+  </div>
 );
-
-
-const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHistory }) => {
-    const totalAudits = (usageLimits.initiatorChecks || 0) + (usageLimits.bidderChecks || 0);
-    const recentReports = reportsHistory.slice(0, 5);
-    const [userList, setUserList] = useState([]);
-
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const snapshot = await getDocs(collection(getFirestore(), "users"));
-                const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setUserList(users);
-            } catch (err) {
-                console.error("Error fetching users:", err);
-            }
-        };
-        fetchUsers();
-    }, []);
-
-    return (
-        <div>
-            <h1>Admin Dashboard</h1>
-            <p>Total audits: {totalAudits}</p>
-
-            <h2>Recent Reports</h2>
-            <ul>
-                {recentReports.map((report, idx) => (
-                    <li key={idx}>{report.title || "Untitled Report"}</li>
-                ))}
-            </ul>
-
-            <h2>Users</h2>
-            <ul>
-                {userList.map(user => (
-                    <li key={user.id}>{user.email || user.name}</li>
-                ))}
-            </ul>
-        </div>
-    );
-};
-
-export default AdminDashboard;
-    
-    return (
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 space-y-8">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-                <h2 className="text-3xl font-bold text-white flex items-center">
-                    <Shield className="w-8 h-8 mr-3 text-red-400"/>
-                    Admin System Oversight
-                </h2>
-                <button
-                    onClick={() => setCurrentPage(PAGE.HOME)}
-                    className="text-sm text-slate-400 hover:text-amber-500 flex items-center"
-                >
-                    <ArrowLeft className="w-4 h-4 mr-1"/> Logout
-                </button>
-            </div>
-            
-            <p className="text-lg text-slate-300">
-                Welcome, <span className="font-bold text-red-400">{currentUser?.name || 'Admin'}</span>. 
-                This is the central dashboard for system monitoring.
-            </p>
-
-            {/* --- Quick Actions --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button
-                    onClick={() => setCurrentPage(PAGE.COMPLIANCE_CHECK)}
-                    className="p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
-                >
-                    <FileUp className="w-5 h-5 mr-2"/> Go to Compliance Check
-                </button>
-                <button
-                    onClick={() => setCurrentPage(PAGE.HISTORY)}
-                    className="p-4 bg-slate-600 hover:bg-slate-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
-                >
-                    <List className="w-5 h-5 mr-2"/> View Full Report History
-                </button>
-            </div>
-
-            {/* --- System Stats --- */}
-            <div>
-                <h3 className="text-xl font-bold text-white mb-4">System Statistics</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <StatCard 
-                        icon={<HardDrive className="w-8 h-8 text-green-400"/>}
-                        label="Total Audits Tracked"
-                        value={totalAudits}
-                    />
-                    <StatCard 
-                        icon={<Users className="w-8 h-8 text-blue-400"/>}
-                        label="Registered Users"
-                        value={userList.length}
-                    />
-                    <StatCard 
-                        icon={<HardDrive className="w-8 h-8 text-amber-400"/>}
-                        label="Total Saved Reports"
-                        value={reportsHistory.length}
-                    />
-                </div>
-            </div>
-
-            {/* --- Registered Users Section (NEW) --- */}
-            <div className="pt-4 border-t border-slate-700">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-                    <Users className="w-5 h-5 mr-2 text-blue-400"/> Registered Users ({userList.length})
-                </h3>
-                <div className="max-h-96 overflow-y-auto pr-3 space-y-4 custom-scrollbar">
-                    {userList.map((user, index) => (
-                        <UserCard key={index} user={user} />
-                    ))}
-                </div>
-            </div>
-
-            {/* --- Recent Activity --- */}
-            <div className="pt-4 border-t border-slate-700">
-                <h3 className="text-xl font-bold text-white mb-4">Recent Audit Activity</h3>
-                <div className="space-y-3">
-                    {recentReports.length > 0 ? recentReports.map(item => (
-                        <div key={item.id} className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg border border-slate-700">
-                            <div>
-                                <p className="text-sm font-medium text-white">{item.bidName}</p>
-                                <p className="text-xs text-slate-400">vs {item.rfqName}</p>
-                            </div>
-                            <span className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleDateString()}</span>
-                        </div>
-                    )) : (
-                        <p className="text-slate-400 italic text-sm">No saved reports found in the database.</p>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
 
 // --- StatCard sub-component for AdminDashboard ---
 const StatCard = ({ icon, label, value }) => (
-    <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 flex items-center space-x-4">
-        <div className="flex-shrink-0">{icon}</div>
-        <div>
-            <div className="text-3xl font-extrabold text-white">{value}</div>
-            <div className="text-sm text-slate-400">{label}</div>
-        </div>
+  <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 flex items-center space-x-4">
+    <div className="flex-shrink-0">{icon}</div>
+    <div>
+      <div className="text-3xl font-extrabold text-white">{value}</div>
+      <div className="text-sm text-slate-400">{label}</div>
     </div>
+  </div>
 );
+
+// --- AdminDashboard component ---
+const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHistory }) => {
+  const totalAudits = (usageLimits.initiatorChecks || 0) + (usageLimits.bidderChecks || 0);
+  const recentReports = reportsHistory.slice(0, 5);
+  const [userList, setUserList] = useState([]);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const snapshot = await getDocs(collection(getFirestore(), 'users'));
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setUserList(users);
+      } catch (err) {
+        console.error('Error fetching users:', err);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  return (
+    <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 space-y-8">
+      {/* Header */}
+      <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+        <h2 className="text-3xl font-bold text-white flex items-center">
+          <Shield className="w-8 h-8 mr-3 text-red-400" />
+          Admin System Oversight
+        </h2>
+        <button
+          onClick={() => setCurrentPage('HOME')}
+          className="text-sm text-slate-400 hover:text-amber-500 flex items-center"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Logout
+        </button>
+      </div>
+
+      {/* Welcome */}
+      <p className="text-lg text-slate-300">
+        Welcome, <span className="font-bold text-red-400">{currentUser?.name || 'Admin'}</span>.
+        This is the central dashboard for system monitoring.
+      </p>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <button
+          onClick={() => setCurrentPage('COMPLIANCE_CHECK')}
+          className="p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
+        >
+          <FileUp className="w-5 h-5 mr-2" /> Go to Compliance Check
+        </button>
+        <button
+          onClick={() => setCurrentPage('HISTORY')}
+          className="p-4 bg-slate-600 hover:bg-slate-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
+        >
+          <List className="w-5 h-5 mr-2" /> View Full Report History
+        </button>
+      </div>
+
+      {/* System Stats */}
+      <div>
+        <h3 className="text-xl font-bold text-white mb-4">System Statistics</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            icon={<HardDrive className="w-8 h-8 text-green-400" />}
+            label="Total Audits Tracked"
+            value={totalAudits}
+          />
+          <StatCard
+            icon={<Users className="w-8 h-8 text-blue-400" />}
+            label="Registered Users"
+            value={userList.length}
+          />
+          <StatCard
+            icon={<HardDrive className="w-8 h-8 text-amber-400" />}
+            label="Total Saved Reports"
+            value={reportsHistory.length}
+          />
+        </div>
+      </div>
+
+      {/* Registered Users Section */}
+      <div className="pt-4 border-t border-slate-700">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center">
+          <Users className="w-5 h-5 mr-2 text-blue-400" /> Registered Users ({userList.length})
+        </h3>
+        <div className="max-h-96 overflow-y-auto pr-3 space-y-4 custom-scrollbar">
+          {userList.map((user, index) => (
+            <UserCard key={index} user={user} />
+          ))}
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="pt-4 border-t border-slate-700">
+        <h3 className="text-xl font-bold text-white mb-4">Recent Audit Activity</h3>
+        <div className="space-y-3">
+          {recentReports.length > 0 ? (
+            recentReports.map(item => (
+              <div
+                key={item.id}
+                className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg border border-slate-700"
+              >
+                <div>
+                  <p className="text-sm font-medium text-white">{item.bidName}</p>
+                  <p className="text-xs text-slate-400">vs {item.rfqName}</p>
+                </div>
+                <span className="text-xs text-slate-500">
+                  {new Date(item.timestamp).toLocaleDateString()}
+                </span>
+              </div>
+            ))
+          ) : (
+            <p className="text-slate-400 italic text-sm">No saved reports found in the database.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 
 // --- Common Audit Component (Usage limits removed) ---
