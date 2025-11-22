@@ -10,8 +10,8 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
     getFirestore, collection, addDoc, onSnapshot, query, doc, setDoc, updateDoc, 
-    runTransaction, deleteDoc 
-} from 'firebase/firestore';
+    runTransaction, deleteDoc, getDocs
+} from 'firebase/firestore'; // <-- add getDocs if not already
 
 // --- CONSTANTS ---
 const API_MODEL = "gemini-2.5-flash-preview-09-2025";
@@ -959,15 +959,13 @@ const UserCard = ({ user }) => (
 
 const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHistory }) => {
     const totalAudits = (usageLimits.initiatorChecks || 0) + (usageLimits.bidderChecks || 0);
-    const recentReports = reportsHistory.slice(0, 5); // Get 5 most recent
-
-    // Fetch real users from Firebase Firestore
+    const recentReports = reportsHistory.slice(0, 5);
     const [userList, setUserList] = useState([]);
 
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const snapshot = await getDocs(collection(db, "users"));
+                const snapshot = await getDocs(collection(getFirestore(), "users"));
                 const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setUserList(users);
             } catch (err) {
@@ -981,6 +979,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
         <div>
             <h1>Admin Dashboard</h1>
             <p>Total audits: {totalAudits}</p>
+
             <h2>Recent Reports</h2>
             <ul>
                 {recentReports.map((report, idx) => (
