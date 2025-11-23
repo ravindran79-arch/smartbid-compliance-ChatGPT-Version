@@ -13,6 +13,21 @@ import {
     runTransaction, deleteDoc, getDocs
 } from 'firebase/firestore'; // <-- add getDocs if not already
 
+// --- FIREBASE INITIALIZATION (PLACE HERE) ---
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+
 // --- CONSTANTS ---
 const API_MODEL = "gemini-2.5-flash-preview-09-2025";
 const API_KEY = import.meta.env.VITE_API_KEY; // <-- This line is the fix
@@ -337,86 +352,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
     );
 };
 
-
-
-// --- Main Application Component (Now called App) ---
-function App() {
-    // --- STATE ---
-    const [RFQFile, setRFQFile] = useState(null);
-    const [BidFile, setBidFile] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [report, setReport] = useState(null); 
-    const [errorMessage, setErrorMessage] = useState(null);
-    const [currentPage, setCurrentPage] = useState(PAGE.HOME);
-
-    // --- MOCK AUTH STATE (Now a multi-user object - UPDATED DEFAULT USER DATA) ---
-        const [currentUser, setCurrentUser] = useState(null); // { login, name, role }
-
-    // --- FIREBASE STATE ---
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null); 
-    const [userId, setUserId] = useState(null);
-    const [reportsHistory, setReportsHistory] = useState([]);
-    const [usageLimits, setUsageLimits] = useState({ 
-        initiatorChecks: 0, 
-        bidderChecks: 0, 
-        isSubscribed: true // Set to TRUE for unlimited testing mode
-    });
-
-    // --- EFFECT 1: Firebase Initialization and Auth ---
-    useEffect(() => {
-        try {
-            const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
-            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    
-            if (Object.keys(firebaseConfig).length === 0) {
-                setIsAuthReady(true);
-                return;
-            }
-
-            const app = initializeApp(firebaseConfig);
-            const newAuth = getAuth(app);
-            const newDb = getFirestore(app);
-
-            setDb(newDb);
-
-            setDb(newDb);
-            setAuth(newAuth);
-
-            const signIn = async () => {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(newAuth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(newAuth);
-                    }
-                } catch (error) {
-                    console.error("Firebase Sign-In Failed:", error);
-                }
-            };
-
-            const unsubscribeAuth = onAuthStateChanged(newAuth, async (user) => {
-                const uid = user?.uid || null;
-                setUserId(uid);
-                setIsAuthReady(true);
-
-                if (uid && newDb) {
-                    try {
-                        const userDoc = await getDoc(doc(newDb, 'users', uid));
-                        if (userDoc.exists()) {
-                            setCurrentUser({ uid, ...userDoc.data() });
-                        } else {
-                            setCurrentUser({ uid, role: 'ANONYMOUS' });
-                        }
-                    } catch (e) {
-                        console.error('Error loading user profile:', e);
-                    }
-                } else {
-                    setCurrentUser(null);
-                }
-            });
 
             signIn();
             setAuth(newAuth); 
