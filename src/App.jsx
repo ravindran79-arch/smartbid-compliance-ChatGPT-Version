@@ -352,20 +352,68 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
     );
 };
 
+// --- EFFECT 1: Firebase Initialization and Auth ---
+useEffect(() => {
+    try {
+        const firebaseConfig = {
+            apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+            storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+            messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+            appId: import.meta.env.VITE_FIREBASE_APP_ID
+        };
 
-            signIn();
-            setAuth(newAuth); 
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-           
+        const app = initializeApp(firebaseConfig);
+        const newAuth = getAuth(app);
+        const newDb = getFirestore(app);
 
-            signIn();
-            return () => unsubscribeAuth();
+        setDb(newDb);
+        setAuth(newAuth);
 
-        } catch (e) {
-            console.error("Error initializing Firebase:", e);
+        const signIn = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(newAuth, initialAuthToken);
+                } else {
+                    await signInAnonymously(newAuth);
+                }
+            } catch (error) {
+                console.error("Firebase Sign-In Failed:", error);
+            }
+        };
+
+        signIn();
+
+        const unsubscribeAuth = onAuthStateChanged(newAuth, async (user) => {
+            const uid = user?.uid || null;
+            setUserId(uid);
             setIsAuthReady(true);
-        }
-    }, []); 
+
+            if (uid && newDb) {
+                try {
+                    const userDoc = await getDoc(doc(newDb, 'users', uid));
+                    if (userDoc.exists()) {
+                        setCurrentUser({ uid, ...userDoc.data() });
+                    } else {
+                        setCurrentUser({ uid, role: 'ANONYMOUS' });
+                    }
+                } catch (e) {
+                    console.error('Error loading user profile:', e);
+                }
+            } else {
+                setCurrentUser(null);
+            }
+        });
+
+        return () => unsubscribeAuth();
+    } catch (e) {
+        console.error("Error initializing Firebase:", e);
+        setIsAuthReady(true);
+    }
+}, []);
 
     // --- EFFECT 2: Load/Initialize Usage Limits (Scoped by userId) ---
     useEffect(() => {
