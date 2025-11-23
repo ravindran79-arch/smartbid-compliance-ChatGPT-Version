@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
-    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye
+    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -44,14 +44,26 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- JSON Schema ---
+// --- UPDATED JSON Schema (Capture Market Intel) ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
-    description: "The complete compliance audit report.",
+    description: "The complete compliance audit report with market intelligence data.",
     properties: {
         "rfqScopeSummary": {
             "type": "STRING",
-            "description": "A 1-2 sentence high-level summary of the project scope or nature of work extracted strictly from the RFQ document (Document A). What is the job being outsourced?"
+            "description": "A 1-2 sentence high-level summary of the project scope strictly from the RFQ. What is the job?"
+        },
+        "grandTotalValue": {
+            "type": "STRING",
+            "description": "Extract the total proposed Bid Price/Cost from the Bid Document (e.g., '$450,000' or 'Not Disclosed'). If unclear, estimate or state 'Unknown'."
+        },
+        "industryTag": {
+            "type": "STRING",
+            "description": "Classify the project into ONE industry sector: 'Construction', 'IT/SaaS', 'Healthcare', 'Logistics', 'Consulting', 'Manufacturing', or 'Other'."
+        },
+        "primaryRisk": {
+            "type": "STRING",
+            "description": "In 5 words or less, state the biggest compliance risk (e.g., 'Missing Financials', 'Liability Cap Mismatch')."
         },
         "executiveSummary": {
             "type": "STRING",
@@ -72,7 +84,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
             }
         }
     },
-    "required": ["rfqScopeSummary", "executiveSummary", "findings"]
+    "required": ["rfqScopeSummary", "grandTotalValue", "industryTag", "primaryRisk", "executiveSummary", "findings"]
 };
 
 // --- API Utility ---
@@ -467,13 +479,19 @@ const App = () => {
             const systemPrompt = {
                 parts: [{
                     text: `You are the SmartBid Compliance Auditor. Your task is to strictly compare the RFQ and the Bid.
-                    1. Identify all mandatory requirements from the RFQ.
-                    2. Locate the corresponding response in the Bid.
-                    3. Score Compliance: 1 (Full), 0.5 (Partial), 0 (Non-Compliant).
-                    4. Assign Category: ${CATEGORY_ENUM.join(', ')}.
-                    5. Generate Negotiation Stance for scores < 1.
-                    6. EXTRACT 'rfqScopeSummary': A 1-2 sentence summary of the project scope/nature of work strictly from the RFQ document. What is being outsourced?
-                    7. Generate JSON output ONLY.`
+                    
+                    1. EXTRACT 'grandTotalValue': Find the total price/bid amount. If unclear, say 'Unknown'.
+                    2. EXTRACT 'industryTag': Classify RFQ into ONE sector: 'Construction', 'IT/SaaS', 'Healthcare', 'Logistics', 'Consulting', 'Manufacturing', or 'Other'.
+                    3. EXTRACT 'primaryRisk': In 5 words or less, what is the biggest deal-breaker risk?
+                    4. EXTRACT 'rfqScopeSummary': A 1-2 sentence high-level summary of the job description from the RFQ.
+                    
+                    5. Identify mandatory requirements from RFQ.
+                    6. Locate corresponding response in Bid.
+                    7. Score Compliance: 1 (Full), 0.5 (Partial), 0 (Non-Compliant).
+                    8. Category: ${CATEGORY_ENUM.join(', ')}.
+                    9. Negotiation Stance: Required for scores < 1.
+                    
+                    10. Generate JSON output ONLY.`
                 }]
             };
 
@@ -798,7 +816,7 @@ const StatCard = ({ icon, label, value }) => (
   </div>
 );
 
-// --- AdminDashboard component (IMPROVED) ---
+// --- AdminDashboard component (MARKET INTEL ENABLED) ---
 const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
   const [userList, setUserList] = useState([]);
 
@@ -817,17 +835,12 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
 
   // Calculate Global Stats
   const totalAudits = reportsHistory.length; 
-  const recentReports = reportsHistory.slice(0, 8); // Show more recent activities
+  const recentReports = reportsHistory.slice(0, 10); // Show 10 most recent
 
   // Helper to find user info for a report
   const getUserForReport = (ownerId) => {
     const found = userList.find(u => u.id === ownerId);
     return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
-  };
-
-  const getUserRole = (ownerId) => {
-    const found = userList.find(u => u.id === ownerId);
-    return found ? found.role : 'USER';
   };
 
   return (
@@ -836,7 +849,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
         <h2 className="text-3xl font-bold text-white flex items-center">
           <Shield className="w-8 h-8 mr-3 text-red-400" />
-          Admin System Oversight
+          Admin Market Intelligence
         </h2>
         <button
           onClick={() => setCurrentPage('HOME')}
@@ -849,7 +862,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
       {/* Welcome */}
       <p className="text-lg text-slate-300">
         Welcome, <span className="font-bold text-red-400">{currentUser?.name || 'Admin'}</span>.
-        Monitoring <span className="text-white font-bold">{userList.length}</span> active users across the platform.
+        Collecting real-time market data from <span className="text-white font-bold">{userList.length}</span> active vendors.
       </p>
 
       {/* Quick Actions */}
@@ -868,23 +881,23 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
         </button>
       </div>
 
-      {/* System Stats (FIXED: Uses actual report count) */}
+      {/* System Stats */}
       <div>
-        <h3 className="text-xl font-bold text-white mb-4">System Statistics</h3>
+        <h3 className="text-xl font-bold text-white mb-4">System & Market Stats</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <StatCard
             icon={<HardDrive className="w-8 h-8 text-green-400" />}
-            label="Total Reports Saved"
+            label="Total Bids Processed"
             value={totalAudits}
           />
           <StatCard
             icon={<Users className="w-8 h-8 text-blue-400" />}
-            label="Registered Users"
+            label="Active Vendors"
             value={userList.length}
           />
           <StatCard
             icon={<Layers className="w-8 h-8 text-amber-400" />}
-            label="Avg. Compliance Rate"
+            label="Avg. Compliance"
             value={reportsHistory.length > 0 
                 ? Math.round(reportsHistory.reduce((acc, r) => acc + (getCompliancePercentage(r)), 0) / reportsHistory.length) + "%" 
                 : "0%"}
@@ -892,10 +905,10 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
         </div>
       </div>
 
-      {/* Recent Activity (ENHANCED: The "God View") */}
+      {/* Live Market Feed (ENHANCED GOD VIEW) */}
       <div className="pt-4 border-t border-slate-700">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-            <Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Audit Feed (Recent)
+            <Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Data Feed
         </h3>
         <div className="space-y-4">
           {recentReports.length > 0 ? (
@@ -904,55 +917,58 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
                 const scoreColor = percentage >= 80 ? 'text-green-400' : percentage >= 50 ? 'text-amber-400' : 'text-red-400';
                 
                 return (
-                  <div
-                    key={item.id}
-                    className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 shadow-sm hover:bg-slate-900 transition"
-                  >
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
-                        {/* Left: Project & Score */}
+                  <div key={item.id} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 shadow-sm hover:bg-slate-900 transition">
+                    {/* Row 1: Project & Vendor */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start mb-3">
                         <div>
-                            <p className="text-lg font-bold text-white flex items-center">
-                                {item.rfqName}
-                                <span className={`ml-3 px-2 py-0.5 rounded text-sm font-bold bg-slate-800 border ${scoreColor.replace('text', 'border')} ${scoreColor}`}>
-                                    {percentage}% Compliance
+                            <div className="flex items-center flex-wrap gap-2">
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-900 text-blue-200 border border-blue-700">
+                                    {item.industryTag || 'UNCLASSIFIED'}
                                 </span>
-                            </p>
+                                <h4 className="text-lg font-bold text-white">{item.rfqName}</h4>
+                            </div>
                             <p className="text-sm text-slate-400 mt-1 flex items-center">
-                                <User className="w-3 h-3 mr-1"/>
-                                {getUserForReport(item.ownerId)} 
-                                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700">
-                                    {getUserRole(item.ownerId)}
-                                </span>
+                                <User className="w-3 h-3 mr-1"/> Vendor: {getUserForReport(item.ownerId)}
                             </p>
                         </div>
-                        {/* Right: Date */}
-                        <span className="text-xs text-slate-500 mt-2 sm:mt-0 font-mono">
-                          {new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}
-                        </span>
+                        <div className="text-right mt-2 sm:mt-0">
+                            <div className={`text-xl font-bold ${scoreColor}`}>{percentage}% Compliance</div>
+                            <p className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleDateString()}</p>
+                        </div>
                     </div>
 
-                    {/* Snapshot of RFQ Nature of Work */}
-                    <div className="mt-2 p-3 bg-slate-800 rounded-lg border border-slate-700/50">
-                        <p className="text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wider">Nature of Job (Snapshot from RFQ)</p>
-                        <p className="text-sm text-slate-300 italic line-clamp-2">
-                            "{item.rfqScopeSummary || 'Scope data not available for legacy report.'}"
-                        </p>
+                    {/* Row 2: The "Money" & "Risk" Layer */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                        <div className="p-3 bg-slate-800 rounded-lg border border-slate-700/50">
+                            <p className="text-xs font-semibold text-green-400 mb-1 flex items-center">
+                                <DollarSign className="w-3 h-3 mr-1"/> BID VALUE & SCOPE
+                            </p>
+                            <p className="text-sm text-white font-bold">{item.grandTotalValue || 'Value Not Detected'}</p>
+                            <p className="text-xs text-slate-400 italic mt-1 line-clamp-2">"{item.rfqScopeSummary || 'No scope summary.'}"</p>
+                        </div>
+                        
+                        <div className="p-3 bg-slate-800 rounded-lg border border-slate-700/50">
+                            <p className="text-xs font-semibold text-red-400 mb-1 flex items-center">
+                                <Activity className="w-3 h-3 mr-1"/> PRIMARY RISK FACTOR
+                            </p>
+                            <p className="text-sm text-slate-200">{item.primaryRisk || 'No risk analysis available.'}</p>
+                        </div>
                     </div>
                   </div>
                 );
             })
           ) : (
             <p className="text-slate-400 italic text-sm p-4 text-center border border-dashed border-slate-700 rounded-xl">
-                No audit activity recorded in the system yet.
+                No market data collected yet. Run a new audit to populate the dataset.
             </p>
           )}
         </div>
       </div>
       
-      {/* Registered Users Section (Moved to bottom) */}
+      {/* Registered Users */}
       <div className="pt-4 border-t border-slate-700">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-          <Users className="w-5 h-5 mr-2 text-blue-400" /> User Registry ({userList.length})
+          <Users className="w-5 h-5 mr-2 text-blue-400" /> Vendor Registry ({userList.length})
         </h3>
         <div className="max-h-64 overflow-y-auto pr-3 space-y-4 custom-scrollbar bg-slate-900/30 p-4 rounded-xl border border-slate-700/50">
           {userList.map((user, index) => (
