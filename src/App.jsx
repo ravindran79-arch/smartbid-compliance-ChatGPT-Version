@@ -49,7 +49,14 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report.",
     properties: {
-        "executiveSummary": { "type": "STRING" },
+        "rfqScopeSummary": {
+            "type": "STRING",
+            "description": "A 1-2 sentence high-level summary of the project scope or nature of work extracted strictly from the RFQ document (Document A). What is the job being outsourced?"
+        },
+        "executiveSummary": {
+            "type": "STRING",
+            "description": "A concise, high-level summary of the compliance audit findings."
+        },
         "findings": {
             type: "ARRAY",
             items: {
@@ -65,7 +72,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
             }
         }
     },
-    "required": ["executiveSummary", "findings"]
+    "required": ["rfqScopeSummary", "executiveSummary", "findings"]
 };
 
 // --- API Utility ---
@@ -198,7 +205,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             const userCred = await createUserWithEmailAndPassword(auth, regForm.email, regForm.password);
-            
             await setDoc(doc(db, 'users', userCred.user.uid), {
                 name: regForm.name,
                 designation: regForm.designation,
@@ -208,10 +214,8 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                 role: 'USER',
                 createdAt: Date.now()
             });
-
             setLoginForm({ email: regForm.email, password: regForm.password });
             setErrorMessage('SUCCESS: Registration complete! Credentials autofilled. Please Sign In below.');
-
         } catch (err) {
             console.error('Registration error', err);
             setErrorMessage(err.message || 'Registration failed.');
@@ -370,7 +374,6 @@ const App = () => {
                 unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
                     const history = [];
                     snapshot.forEach(docSnap => {
-                        // For Admin God View: capture who owns this report
                         const ownerId = docSnap.ref.parent.parent ? docSnap.ref.parent.parent.id : userId;
                         history.push({ 
                             id: docSnap.id, 
@@ -463,18 +466,19 @@ const App = () => {
             
             const systemPrompt = {
                 parts: [{
-                    text: `You are the SmartBid Compliance Auditor, a world-class procurement specialist. Your task is to strictly compare two documents: the Request for Quotation (RFQ) and the submitted Bid.
-                    1. Identify all mandatory requirements, clauses, and constraints from the RFQ.
-                    2. For each requirement, locate the corresponding response in the Bid.
-                    3. Assign a Compliance Score: 1 for Full Compliance, 0.5 for Partially Addressed, 0 for Non-Compliant/Missing.
-                    4. Infer a functional category for each requirement from the following list: ${CATEGORY_ENUM.join(', ')}.
-                    5. IMPORTANT: For any item scoring 0 or 0.5 (Non-Compliant or Partial), you MUST generate a 'negotiationStance'. This stance must be a 1-2 sentence compromise that the bidder can use to open negotiations with the client, moving the language closer to the RFQ's intent without changing the bidder's core offering. Omit this field for Compliant findings.
-                    6. Generate the output ONLY as a JSON object matching the provided comprehensive schema, ensuring the 'executiveSummary' is informative and actionable.`
+                    text: `You are the SmartBid Compliance Auditor. Your task is to strictly compare the RFQ and the Bid.
+                    1. Identify all mandatory requirements from the RFQ.
+                    2. Locate the corresponding response in the Bid.
+                    3. Score Compliance: 1 (Full), 0.5 (Partial), 0 (Non-Compliant).
+                    4. Assign Category: ${CATEGORY_ENUM.join(', ')}.
+                    5. Generate Negotiation Stance for scores < 1.
+                    6. EXTRACT 'rfqScopeSummary': A 1-2 sentence summary of the project scope/nature of work strictly from the RFQ document. What is being outsourced?
+                    7. Generate JSON output ONLY.`
                 }]
             };
 
-            const userQuery = `RFQ Document Content (Document A - Mandatory Requirements):\n\n---START RFQ---\n${rfqContent}\n---END RFQ---\n\nBid/Proposal Document Content (Document B - The Response):\n\n---START BID---\n${bidContent}\n---END BID---\n\nBased ONLY on the content above, perform the compliance audit and return the results in the requested JSON format.`;
-
+            const userQuery = `RFQ Document (Doc A):\n${rfqContent}\n\nBid Document (Doc B):\n${bidContent}\n\nPerform compliance audit.`;
+            
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
                 systemInstruction: systemPrompt,
@@ -927,11 +931,11 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
                         </span>
                     </div>
 
-                    {/* Snapshot of Executive Summary */}
+                    {/* Snapshot of RFQ Nature of Work */}
                     <div className="mt-2 p-3 bg-slate-800 rounded-lg border border-slate-700/50">
-                        <p className="text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wider">Nature of Job (Snapshot)</p>
+                        <p className="text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wider">Nature of Job (Snapshot from RFQ)</p>
                         <p className="text-sm text-slate-300 italic line-clamp-2">
-                            "{item.executiveSummary || 'No summary available.'}"
+                            "{item.rfqScopeSummary || 'Scope data not available for legacy report.'}"
                         </p>
                     </div>
                   </div>
