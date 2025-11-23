@@ -8,11 +8,11 @@ import {
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
 import { 
-    getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
-    createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut 
+    getAuth, onAuthStateChanged, createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword 
 } from 'firebase/auth';
 import { 
-    getFirestore, collection, addDoc, onSnapshot, query, doc, setDoc, updateDoc, 
+    getFirestore, collection, addDoc, onSnapshot, query, doc, setDoc, 
     runTransaction, deleteDoc, getDocs, getDoc, collectionGroup
 } from 'firebase/firestore'; 
 
@@ -35,10 +35,8 @@ const API_MODEL = "gemini-2.5-flash-preview-09-2025";
 const API_KEY = import.meta.env.VITE_API_KEY; 
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
 
-// --- ENUM for Compliance Category ---
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
 
-// --- APP ROUTING ENUM ---
 const PAGE = {
     HOME: 'HOME',
     COMPLIANCE_CHECK: 'COMPLIANCE_CHECK', 
@@ -113,16 +111,15 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
     }
 };
 
-// --- FIRESTORE UTILITIES (FIXED PATHS) ---
-// CRITICAL FIX: Using VITE_FIREBASE_APP_ID instead of 'default-app-id' to ensure persistence works
+// --- FIRESTORE UTILITIES (FIXED PATHS FOR PERMISSIONS) ---
+// FIX: Using simplified paths 'users/{userId}' to match standard Firebase Security Rules
+// This ensures the "Missing Permissions" error is resolved.
 const getUsageDocRef = (db, userId) => {
-    const appId = import.meta.env.VITE_FIREBASE_APP_ID || 'fallback-app-id';
-    return doc(db, `artifacts/${appId}/users/${userId}/usage_limits`, 'main_tracker');
+    return doc(db, `users/${userId}/usage_limits`, 'main_tracker');
 };
 
 const getReportsCollectionRef = (db, userId) => {
-    const appId = import.meta.env.VITE_FIREBASE_APP_ID || 'fallback-app-id';
-    return collection(db, `artifacts/${appId}/users/${userId}/compliance_reports`);
+    return collection(db, `users/${userId}/compliance_reports`);
 };
 
 // --- Calculation Utility ---
@@ -271,12 +268,12 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
                 role: 'USER',
                 createdAt: Date.now()
             });
-            setErrorMessage('Registration successful. You are now logged in.');
+            // FIX: Force immediate navigation to Compliance Check
+            setCurrentPage(PAGE.COMPLIANCE_CHECK);
         } catch (err) {
             console.error('Registration error', err);
             setErrorMessage(err.message || 'Registration failed.');
-        } finally {
-            setIsSubmitting(false);
+            setIsSubmitting(false); // Stop loading spinner on error
         }
     };
 
@@ -287,12 +284,12 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
         try {
             if (!auth) throw new Error('Auth not configured.');
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            setErrorMessage('Login successful.');
+            // FIX: Force immediate navigation to Compliance Check
+            setCurrentPage(PAGE.COMPLIANCE_CHECK);
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
-        } finally {
-            setIsSubmitting(false);
+            setIsSubmitting(false); // Stop loading spinner on error
         }
     };
 
@@ -367,7 +364,8 @@ const App = () => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setUserId(user.uid);
-                // Navigate IMMEDIATELY to prevent login loop
+                // FIX: Navigate IMMEDIATELY to prevent login loop
+                // If the user is on HOME, move them to COMPLIANCE_CHECK instantly.
                 setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
                 
                 try {
