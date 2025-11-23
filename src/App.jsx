@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
-    Shield, User, HardDrive, Phone, Mail, Building, Trash2 
+    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -88,7 +88,6 @@ const getUsageDocRef = (db, userId) => {
 };
 
 const getReportsCollectionRef = (db, userId) => {
-    // This standard path works best with default security rules
     return collection(db, `users/${userId}/compliance_reports`);
 };
 
@@ -193,7 +192,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
     const handleRegChange = (e) => setRegForm({ ...regForm, [e.target.name]: e.target.value });
     const handleLoginChange = (e) => setLoginForm({ ...loginForm, [e.target.name]: e.target.value });
 
-    // FIX Phase 1: Registration Flow
     const handleRegister = async (e) => {
         e.preventDefault();
         setErrorMessage(null);
@@ -201,7 +199,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         try {
             const userCred = await createUserWithEmailAndPassword(auth, regForm.email, regForm.password);
             
-            // Create User Profile in DB
             await setDoc(doc(db, 'users', userCred.user.uid), {
                 name: regForm.name,
                 designation: regForm.designation,
@@ -212,13 +209,8 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                 createdAt: Date.now()
             });
 
-            // 1. Autofill Login Form
             setLoginForm({ email: regForm.email, password: regForm.password });
-            
-            // 2. Set Success Message (Green)
             setErrorMessage('SUCCESS: Registration complete! Credentials autofilled. Please Sign In below.');
-            
-            // 3. DO NOT Navigate. User must click "Sign In".
 
         } catch (err) {
             console.error('Registration error', err);
@@ -234,7 +226,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // Login Success -> Navigate to Tool
             setCurrentPage(PAGE.COMPLIANCE_CHECK);
         } catch (err) {
             console.error('Login error', err);
@@ -316,8 +307,7 @@ const App = () => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setUserId(user.uid);
-                // NOTE: We do NOT auto-navigate here anymore, because registration requires manual login.
-                // Navigation is handled by handleLogin()
+                setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
                 
                 try {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -380,9 +370,14 @@ const App = () => {
                 unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
                     const history = [];
                     snapshot.forEach(docSnap => {
-                        history.push({ id: docSnap.id, ...docSnap.data() });
+                        // For Admin God View: capture who owns this report
+                        const ownerId = docSnap.ref.parent.parent ? docSnap.ref.parent.parent.id : userId;
+                        history.push({ 
+                            id: docSnap.id, 
+                            ownerId: ownerId, 
+                            ...docSnap.data() 
+                        });
                     });
-                    // Sort by timestamp DESC initially
                     history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                     setReportsHistory(history);
                 }, (error) => {
@@ -589,7 +584,6 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
 
         } catch (error) {
             console.error("Error saving report:", error);
-            // This error message now explicitly guides the user to check console rules
             setErrorMessage(`Failed to save: ${error.message}. (Check Firebase Console > Firestore Database > Rules)`);
         } finally {
             setSaving(false);
@@ -678,7 +672,6 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
                 return <AdminDashboard
                     setCurrentPage={setCurrentPage}
                     currentUser={currentUser}
-                    usageLimits={usageLimits}
                     reportsHistory={reportsHistory}
                     />;
             case PAGE.HISTORY:
@@ -801,10 +794,8 @@ const StatCard = ({ icon, label, value }) => (
   </div>
 );
 
-// --- AdminDashboard component ---
-const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHistory }) => {
-  const totalAudits = (usageLimits.initiatorChecks || 0) + (usageLimits.bidderChecks || 0);
-  const recentReports = reportsHistory.slice(0, 5);
+// --- AdminDashboard component (IMPROVED) ---
+const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory }) => {
   const [userList, setUserList] = useState([]);
 
   useEffect(() => {
@@ -819,6 +810,21 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
     };
     fetchUsers();
   }, []);
+
+  // Calculate Global Stats
+  const totalAudits = reportsHistory.length; 
+  const recentReports = reportsHistory.slice(0, 8); // Show more recent activities
+
+  // Helper to find user info for a report
+  const getUserForReport = (ownerId) => {
+    const found = userList.find(u => u.id === ownerId);
+    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
+  };
+
+  const getUserRole = (ownerId) => {
+    const found = userList.find(u => u.id === ownerId);
+    return found ? found.role : 'USER';
+  };
 
   return (
     <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 space-y-8">
@@ -839,7 +845,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
       {/* Welcome */}
       <p className="text-lg text-slate-300">
         Welcome, <span className="font-bold text-red-400">{currentUser?.name || 'Admin'}</span>.
-        This is the central dashboard for system monitoring.
+        Monitoring <span className="text-white font-bold">{userList.length}</span> active users across the platform.
       </p>
 
       {/* Quick Actions */}
@@ -858,13 +864,13 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
         </button>
       </div>
 
-      {/* System Stats */}
+      {/* System Stats (FIXED: Uses actual report count) */}
       <div>
         <h3 className="text-xl font-bold text-white mb-4">System Statistics</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <StatCard
             icon={<HardDrive className="w-8 h-8 text-green-400" />}
-            label="Total Audits Tracked"
+            label="Total Reports Saved"
             value={totalAudits}
           />
           <StatCard
@@ -873,47 +879,81 @@ const AdminDashboard = ({ setCurrentPage, currentUser, usageLimits, reportsHisto
             value={userList.length}
           />
           <StatCard
-            icon={<HardDrive className="w-8 h-8 text-amber-400" />}
-            label="Total Saved Reports"
-            value={reportsHistory.length}
+            icon={<Layers className="w-8 h-8 text-amber-400" />}
+            label="Avg. Compliance Rate"
+            value={reportsHistory.length > 0 
+                ? Math.round(reportsHistory.reduce((acc, r) => acc + (getCompliancePercentage(r)), 0) / reportsHistory.length) + "%" 
+                : "0%"}
           />
         </div>
       </div>
 
-      {/* Registered Users Section */}
+      {/* Recent Activity (ENHANCED: The "God View") */}
       <div className="pt-4 border-t border-slate-700">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-          <Users className="w-5 h-5 mr-2 text-blue-400" /> Registered Users ({userList.length})
+            <Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Audit Feed (Recent)
         </h3>
-        <div className="max-h-96 overflow-y-auto pr-3 space-y-4 custom-scrollbar">
+        <div className="space-y-4">
+          {recentReports.length > 0 ? (
+            recentReports.map(item => {
+                const percentage = getCompliancePercentage(item);
+                const scoreColor = percentage >= 80 ? 'text-green-400' : percentage >= 50 ? 'text-amber-400' : 'text-red-400';
+                
+                return (
+                  <div
+                    key={item.id}
+                    className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 shadow-sm hover:bg-slate-900 transition"
+                  >
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
+                        {/* Left: Project & Score */}
+                        <div>
+                            <p className="text-lg font-bold text-white flex items-center">
+                                {item.rfqName}
+                                <span className={`ml-3 px-2 py-0.5 rounded text-sm font-bold bg-slate-800 border ${scoreColor.replace('text', 'border')} ${scoreColor}`}>
+                                    {percentage}% Compliance
+                                </span>
+                            </p>
+                            <p className="text-sm text-slate-400 mt-1 flex items-center">
+                                <User className="w-3 h-3 mr-1"/>
+                                {getUserForReport(item.ownerId)} 
+                                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700">
+                                    {getUserRole(item.ownerId)}
+                                </span>
+                            </p>
+                        </div>
+                        {/* Right: Date */}
+                        <span className="text-xs text-slate-500 mt-2 sm:mt-0 font-mono">
+                          {new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}
+                        </span>
+                    </div>
+
+                    {/* Snapshot of Executive Summary */}
+                    <div className="mt-2 p-3 bg-slate-800 rounded-lg border border-slate-700/50">
+                        <p className="text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wider">Nature of Job (Snapshot)</p>
+                        <p className="text-sm text-slate-300 italic line-clamp-2">
+                            "{item.executiveSummary || 'No summary available.'}"
+                        </p>
+                    </div>
+                  </div>
+                );
+            })
+          ) : (
+            <p className="text-slate-400 italic text-sm p-4 text-center border border-dashed border-slate-700 rounded-xl">
+                No audit activity recorded in the system yet.
+            </p>
+          )}
+        </div>
+      </div>
+      
+      {/* Registered Users Section (Moved to bottom) */}
+      <div className="pt-4 border-t border-slate-700">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center">
+          <Users className="w-5 h-5 mr-2 text-blue-400" /> User Registry ({userList.length})
+        </h3>
+        <div className="max-h-64 overflow-y-auto pr-3 space-y-4 custom-scrollbar bg-slate-900/30 p-4 rounded-xl border border-slate-700/50">
           {userList.map((user, index) => (
             <UserCard key={index} user={user} />
           ))}
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="pt-4 border-t border-slate-700">
-        <h3 className="text-xl font-bold text-white mb-4">Recent Audit Activity</h3>
-        <div className="space-y-3">
-          {recentReports.length > 0 ? (
-            recentReports.map(item => (
-              <div
-                key={item.id}
-                className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg border border-slate-700"
-              >
-                <div>
-                  <p className="text-sm font-medium text-white">{item.bidName}</p>
-                  <p className="text-xs text-slate-400">vs {item.rfqName}</p>
-                </div>
-                <span className="text-xs text-slate-500">
-                  {new Date(item.timestamp).toLocaleDateString()}
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="text-slate-400 italic text-sm">No saved reports found in the database.</p>
-          )}
         </div>
       </div>
     </div>
@@ -943,7 +983,7 @@ const AuditPage = ({
         if (currentUser && currentUser.role === 'ADMIN') {
             return (
                 <p className="text-green-400 text-sm font-semibold">
-                    **Welcome, {currentUser.name}! | ADMIN VIEW: Total Audits Tracked: {usageLimits}**
+                    **Welcome, {currentUser.name}! | ADMIN VIEW**
                 </p>
             );
         }
