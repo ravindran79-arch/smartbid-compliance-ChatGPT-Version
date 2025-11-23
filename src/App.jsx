@@ -117,15 +117,15 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 
 // --- Utility Function to get Firestore Document Reference for Usage ---
 const getUsageDocRef = (db, userId) => {
-    const appId = 'default-app-id'; // Simplified for fix
-    // Path: /artifacts/{appId}/users/{userId}/usage_limits/main_tracker
+    // FIX: Use the actual App ID from env to match Firestore Security Rules
+    const appId = import.meta.env.VITE_FIREBASE_APP_ID;
     return doc(db, `artifacts/${appId}/users/${userId}/usage_limits`, 'main_tracker');
 };
 
 // --- Utility Function to get Firestore Collection Reference for Reports ---
 const getReportsCollectionRef = (db, userId) => {
-    const appId = 'default-app-id';
-    // FIX: This path correctly scopes data by userId, ensuring isolation.
+    // FIX: Use the actual App ID from env to match Firestore Security Rules
+    const appId = import.meta.env.VITE_FIREBASE_APP_ID;
     return collection(db, `artifacts/${appId}/users/${userId}/compliance_reports`);
 };
 
@@ -239,13 +239,13 @@ const handleFileChange = (e, setFile, setErrorMessage) => {
 };
 
 // --- AuthPage Component ---
-const FormInput = ({ label, name, value, onChange, type, placeholder }) => (
+const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
     <div>
-        <label htmlFor={name} className="block text-sm font-medium text-slate-300 mb-1">
+        <label htmlFor={id || name} className="block text-sm font-medium text-slate-300 mb-1">
             {label}
         </label>
         <input
-            id={name}
+            id={id || name}
             name={name}
             type={type}
             value={value}
@@ -316,12 +316,12 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
                 <div className="p-6 bg-slate-700/50 rounded-xl border border-blue-500/50 shadow-inner space-y-4">
                     <h3 className="text-2xl font-bold text-blue-300 flex items-center mb-4"><UserPlus className="w-6 h-6 mr-2" /> Create Account</h3>
                     <form onSubmit={handleRegister} className="space-y-3">
-                        <FormInput label="Full Name *" name="name" value={regForm.name} onChange={handleRegChange} type="text" />
-                        <FormInput label="Designation" name="designation" value={regForm.designation} onChange={handleRegChange} type="text" />
-                        <FormInput label="Company" name="company" value={regForm.company} onChange={handleRegChange} type="text" />
-                        <FormInput label="Email *" name="email" value={regForm.email} onChange={handleRegChange} type="email" />
-                        <FormInput label="Contact Number" name="phone" value={regForm.phone} onChange={handleRegChange} type="tel" placeholder="Optional" />
-                        <FormInput label="Create Password *" name="password" value={regForm.password} onChange={handleRegChange} type="password" />
+                        <FormInput id="reg-name" label="Full Name *" name="name" value={regForm.name} onChange={handleRegChange} type="text" />
+<FormInput id="reg-designation" label="Designation" name="designation" value={regForm.designation} onChange={handleRegChange} type="text" />
+<FormInput id="reg-company" label="Company" name="company" value={regForm.company} onChange={handleRegChange} type="text" />
+<FormInput id="reg-email" label="Email *" name="email" value={regForm.email} onChange={handleRegChange} type="email" />
+<FormInput id="reg-phone" label="Contact Number" name="phone" value={regForm.phone} onChange={handleRegChange} type="tel" placeholder="Optional" />
+<FormInput id="reg-password" label="Create Password *" name="password" value={regForm.password} onChange={handleRegChange} type="password" />
 
                         <button type="submit" disabled={isSubmitting} className={`w-full py-3 text-lg font-semibold rounded-xl text-slate-900 transition-all shadow-lg mt-6 bg-blue-400 hover:bg-blue-300 disabled:opacity-50 flex items-center justify-center`}>
                             {isSubmitting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <UserPlus className="h-5 w-5 mr-2" />}
@@ -333,8 +333,8 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
                 <div className="p-6 bg-slate-700/50 rounded-xl border border-green-500/50 shadow-inner flex flex-col justify-center">
                     <h3 className="text-2xl font-bold text-green-300 flex items-center mb-4"><LogIn className="w-6 h-6 mr-2" /> Sign In</h3>
                     <form onSubmit={handleLogin} className="space-y-4">
-                        <FormInput label="Email *" name="email" value={loginForm.email} onChange={handleLoginChange} type="email" />
-                        <FormInput label="Password *" name="password" value={loginForm.password} onChange={handleLoginChange} type="password" />
+                        <FormInput id="login-email" label="Email *" name="email" value={loginForm.email} onChange={handleLoginChange} type="email" />
+<FormInput id="login-password" label="Password *" name="password" value={loginForm.password} onChange={handleLoginChange} type="password" />
 
                         <button type="submit" disabled={isSubmitting} className={`w-full py-3 text-lg font-semibold rounded-xl text-slate-900 transition-all shadow-lg mt-6 bg-green-400 hover:bg-green-300 disabled:opacity-50 flex items-center justify-center`}>
                             {isSubmitting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <LogIn className="h-5 w-5 mr-2" />}
@@ -381,15 +381,12 @@ const App = () => {
                 setUserId(user.uid);
                 try {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
-                    if (userDoc.exists()) {
-                        setCurrentUser({ uid: user.uid, ...userDoc.data() });
-                    } else {
-                        // Minimal fallback if doc doesn't exist yet
-                        setCurrentUser({ uid: user.uid, role: 'USER' });
-                    }
-                    if (currentPage === PAGE.HOME) {
-                        setCurrentPage(PAGE.COMPLIANCE_CHECK);
-                    }
+                    const userData = userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : { uid: user.uid, role: 'USER' };
+                    
+                    setCurrentUser(userData);
+                    
+                    // FIX: Use functional state update to safely navigate from HOME without adding 'currentPage' to dependencies
+                    setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
                 } catch (error) {
                     console.error("Error fetching user profile:", error);
                 }
@@ -400,6 +397,9 @@ const App = () => {
             }
             setIsAuthReady(true);
         });
+
+        return () => unsubscribe();
+    }, []); // FIX: Empty dependency array ensures listener is only attached once
 
         return () => unsubscribe();
     }, [currentPage]);
@@ -716,7 +716,7 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
         setTimeout(() => setErrorMessage(null), 3000);
     }, []);
     
-    // --- Render Switch ---
+   // --- Render Switch ---
     const renderPage = () => {
         switch (currentPage) {
             case PAGE.HOME:
