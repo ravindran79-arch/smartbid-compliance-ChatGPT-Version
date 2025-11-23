@@ -47,51 +47,25 @@ const PAGE = {
 // --- JSON Schema ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
-    description: "The complete compliance audit report, including a high-level summary and detailed requirement findings.",
+    description: "The complete compliance audit report.",
     properties: {
-        "executiveSummary": {
-            "type": "STRING",
-            "description": "A concise, high-level summary of the compliance audit, stating the overall compliance score, and the key areas of failure or success."
-        },
+        "executiveSummary": { "type": "STRING" },
         "findings": {
             type: "ARRAY",
-            description: "A list of detailed compliance findings.",
             items: {
                 type: "OBJECT",
                 properties: {
-                    "requirementFromRFQ": {
-                        "type": "STRING",
-                        "description": "The specific mandatory requirement or clause extracted verbatim from the RFQ document."
-                    },
-                    "complianceScore": {
-                        "type": "NUMBER",
-                        "description": "The score indicating compliance: 1 for Full Compliance, 0.5 for Partially Addressed, 0 for Non-Compliant/Missing."
-                    },
-                    "bidResponseSummary": {
-                        "type": "STRING",
-                        "description": "A concise summary of how the Bid addressed (or failed to address) the requirement, including a direct quote or section reference if possible."
-                    },
-                    "flag": {
-                        "type": "STRING",
-                        "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"],
-                        "description": "A categorical flag based on the score (1=COMPLIANT, 0.5=PARTIAL, 0=NON-COMPLIANT)."
-                    },
-                    "category": {
-                        "type": "STRING",
-                        "enum": CATEGORY_ENUM,
-                        "description": "The functional category this requirement belongs to, inferred from its content (e.g., LEGAL, FINANCIAL, TECHNICAL, TIMELINE, REPORTING, ADMINISTRATIVE, OTHER)."
-                    },
-                    "negotiationStance": {
-                        "type": "STRING",
-                        "description": "For items flagged as PARTIAL or NON-COMPLIANT (score < 1), suggest a revised, compromise statement (1-2 sentences) that the Bidder can use to open a negotiation channel. This stance must acknowledge the RFQ requirement while offering a viable alternative or minor concession. Omit this field for COMPLIANT findings (score = 1)."
-                    }
-                },
-                "propertyOrdering": ["requirementFromRFQ", "complianceScore", "bidResponseSummary", "flag", "category", "negotiationStance"]
+                    "requirementFromRFQ": { "type": "STRING" },
+                    "complianceScore": { "type": "NUMBER" },
+                    "bidResponseSummary": { "type": "STRING" },
+                    "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
+                    "category": { "type": "STRING", "enum": CATEGORY_ENUM },
+                    "negotiationStance": { "type": "STRING" }
+                }
             }
         }
     },
-    "required": ["executiveSummary", "findings"],
-    "propertyOrdering": ["executiveSummary", "findings"]
+    "required": ["executiveSummary", "findings"]
 };
 
 // --- API Utility ---
@@ -99,26 +73,22 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
     for (let i = 0; i < maxRetries; i++) {
         try {
             const response = await fetch(url, options);
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             return response;
         } catch (error) {
             if (i === maxRetries - 1) throw error; 
-            const delay = Math.pow(2, i) * 1000; 
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
         }
     }
 };
 
-// --- FIRESTORE UTILITIES (FIXED PATHS FOR PERMISSIONS) ---
-// FIX: Using simplified paths 'users/{userId}' to match standard Firebase Security Rules
-// This ensures the "Missing Permissions" error is resolved.
+// --- FIRESTORE UTILITIES ---
 const getUsageDocRef = (db, userId) => {
     return doc(db, `users/${userId}/usage_limits`, 'main_tracker');
 };
 
 const getReportsCollectionRef = (db, userId) => {
+    // This standard path works best with default security rules
     return collection(db, `users/${userId}/compliance_reports`);
 };
 
@@ -126,8 +96,7 @@ const getReportsCollectionRef = (db, userId) => {
 const getCompliancePercentage = (report) => {
     const findings = report.findings || []; 
     const totalScore = findings.reduce((sum, item) => sum + (item.complianceScore || 0), 0);
-    const totalRequirements = findings.length;
-    const maxScore = totalRequirements * 1;
+    const maxScore = findings.length * 1;
     return maxScore > 0 ? parseFloat(((totalScore / maxScore) * 100).toFixed(1)) : 0;
 };
 
@@ -142,13 +111,10 @@ const processFile = (file) => {
             reader.onerror = reject;
             reader.readAsText(file);
         } else if (fileExtension === 'pdf') {
-            if (typeof window.pdfjsLib === 'undefined' || !window.pdfjsLib.getDocument) {
-                return reject("PDF parsing library (pdf.js) not fully loaded or initialized. PDF support disabled.");
-            }
+            if (typeof window.pdfjsLib === 'undefined') return reject("PDF lib not loaded.");
             reader.onload = async (event) => {
                 try {
-                    const pdfData = new Uint8Array(event.target.result);
-                    const pdf = await window.pdfjsLib.getDocument({ data: pdfData }).promise;
+                    const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(event.target.result) }).promise;
                     let fullText = '';
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
@@ -156,59 +122,37 @@ const processFile = (file) => {
                         fullText += textContent.items.map(item => item.str).join(' ') + '\n\n'; 
                     }
                     resolve(fullText);
-                } catch (e) {
-                    reject('Error parsing PDF. Detail: ' + e.message);
-                }
+                } catch (e) { reject(e.message); }
             };
-            reader.onerror = reject;
             reader.readAsArrayBuffer(file);
         } else if (fileExtension === 'docx') {
-            if (typeof window.mammoth === 'undefined') {
-                 return reject("DOCX parsing library (mammoth.js) not loaded. DOCX support disabled.");
-            }
+            if (typeof window.mammoth === 'undefined') return reject("DOCX lib not loaded.");
             reader.onload = async (event) => {
                 try {
                     const result = await window.mammoth.extractRawText({ arrayBuffer: event.target.result });
                     resolve(result.value); 
-                } catch (e) {
-                    reject('Error parsing DOCX. Detail: ' + e.message);
-                }
+                } catch (e) { reject(e.message); }
             };
-            reader.onerror = reject;
             reader.readAsArrayBuffer(file);
         } else {
-            reject('Unsupported file type. Please use .txt, .pdf, or .docx.');
+            reject('Unsupported file type.');
         }
     });
 };
 
 // --- Error Boundary ---
 class ErrorBoundary extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = { hasError: false, error: null, errorInfo: null };
-    }
-
-    static getDerivedStateFromError(error) {
-        return { hasError: true };
-    }
-
-    componentDidCatch(error, errorInfo) {
-        console.error("Uncaught error:", error, errorInfo);
-        this.setState({ error: error, errorInfo: errorInfo });
-    }
-
+    constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+    static getDerivedStateFromError(error) { return { hasError: true }; }
+    componentDidCatch(error, errorInfo) { this.setState({ error, errorInfo }); }
     render() {
         if (this.state.hasError) {
             return (
-                <div className="min-h-screen bg-red-900 font-body p-4 sm:p-8 text-white flex items-center justify-center">
+                <div className="min-h-screen bg-red-900 font-body p-8 text-white flex items-center justify-center">
                     <div className="bg-red-800 p-8 rounded-xl border border-red-500 max-w-lg">
                         <AlertTriangle className="w-8 h-8 text-red-300 mx-auto mb-4"/>
                         <h2 className="text-xl font-bold mb-2">Critical Application Error</h2>
-                        <p className="text-sm text-red-200">The application crashed during render.</p>
-                        <p className="text-sm mt-3 font-mono break-all bg-red-900 p-2 rounded">
-                            **Error Message:** {this.state.error && this.state.error.toString()}
-                        </p>
+                        <p className="text-sm font-mono">{this.state.error && this.state.error.toString()}</p>
                     </div>
                 </div>
             );
@@ -227,9 +171,7 @@ const handleFileChange = (e, setFile, setErrorMessage) => {
 
 const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
     <div>
-        <label htmlFor={id || name} className="block text-sm font-medium text-slate-300 mb-1">
-            {label}
-        </label>
+        <label htmlFor={id || name} className="block text-sm font-medium text-slate-300 mb-1">{label}</label>
         <input
             id={id || name}
             name={name}
@@ -243,7 +185,7 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
     </div>
 );
 
-const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, setCurrentUser, db, auth }) => {
+const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -251,15 +193,16 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
     const handleRegChange = (e) => setRegForm({ ...regForm, [e.target.name]: e.target.value });
     const handleLoginChange = (e) => setLoginForm({ ...loginForm, [e.target.name]: e.target.value });
 
+    // FIX Phase 1: Registration Flow
     const handleRegister = async (e) => {
         e.preventDefault();
         setErrorMessage(null);
         setIsSubmitting(true);
         try {
-            if (!auth || !db) throw new Error('Authentication backend not configured.');
             const userCred = await createUserWithEmailAndPassword(auth, regForm.email, regForm.password);
-            const uid = userCred.user.uid;
-            await setDoc(doc(db, 'users', uid), {
+            
+            // Create User Profile in DB
+            await setDoc(doc(db, 'users', userCred.user.uid), {
                 name: regForm.name,
                 designation: regForm.designation,
                 company: regForm.company,
@@ -268,12 +211,20 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
                 role: 'USER',
                 createdAt: Date.now()
             });
-            // FIX: Force immediate navigation to Compliance Check
-            setCurrentPage(PAGE.COMPLIANCE_CHECK);
+
+            // 1. Autofill Login Form
+            setLoginForm({ email: regForm.email, password: regForm.password });
+            
+            // 2. Set Success Message (Green)
+            setErrorMessage('SUCCESS: Registration complete! Credentials autofilled. Please Sign In below.');
+            
+            // 3. DO NOT Navigate. User must click "Sign In".
+
         } catch (err) {
             console.error('Registration error', err);
             setErrorMessage(err.message || 'Registration failed.');
-            setIsSubmitting(false); // Stop loading spinner on error
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -282,16 +233,17 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
         setErrorMessage(null);
         setIsSubmitting(true);
         try {
-            if (!auth) throw new Error('Auth not configured.');
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // FIX: Force immediate navigation to Compliance Check
+            // Login Success -> Navigate to Tool
             setCurrentPage(PAGE.COMPLIANCE_CHECK);
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
-            setIsSubmitting(false); // Stop loading spinner on error
+            setIsSubmitting(false);
         }
     };
+
+    const isSuccess = errorMessage && errorMessage.includes('SUCCESS');
 
     return (
         <div className="p-8 bg-slate-800 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 mt-12 mb-12">
@@ -329,8 +281,8 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, isAuthReady, errorMessage, 
                     </form>
 
                     {errorMessage && (
-                        <div className="mt-4 p-3 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center">
-                            <AlertTriangle className="w-5 h-5 mr-3"/>
+                        <div className={`mt-4 p-3 ${isSuccess ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-red-900/40 text-red-300 border-red-700'} border rounded-xl flex items-center`}>
+                            {isSuccess ? <CheckCircle className="w-5 h-5 mr-3"/> : <AlertTriangle className="w-5 h-5 mr-3"/>}
                             <p className="text-sm font-medium">{errorMessage}</p>
                         </div>
                     )}
@@ -364,9 +316,8 @@ const App = () => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setUserId(user.uid);
-                // FIX: Navigate IMMEDIATELY to prevent login loop
-                // If the user is on HOME, move them to COMPLIANCE_CHECK instantly.
-                setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
+                // NOTE: We do NOT auto-navigate here anymore, because registration requires manual login.
+                // Navigation is handled by handleLogin()
                 
                 try {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -638,7 +589,8 @@ We are pleased to submit our proposal for the Cloud Migration Service. We are co
 
         } catch (error) {
             console.error("Error saving report:", error);
-            setErrorMessage(`Failed to save report: ${error.message}. Check permissions.`);
+            // This error message now explicitly guides the user to check console rules
+            setErrorMessage(`Failed to save: ${error.message}. (Check Firebase Console > Firestore Database > Rules)`);
         } finally {
             setSaving(false);
         }
