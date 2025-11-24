@@ -45,7 +45,7 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- UPDATED JSON Schema (5-Point SaaS Coach Pack) ---
+// --- UPDATED JSON Schema (Refined for Professional Output) ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
@@ -62,10 +62,10 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "incumbentSystem": { "type": "STRING", "description": "Legacy system being replaced." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
 
-        // --- NEW USER COACHING FIELDS ---
+        // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a perfect, 1-paragraph Executive Summary (approx 100 words) that bridges the RFQ requirements with the Bidder's solution. The user will copy/paste this."
+            "description": "Write a perfect, 1-paragraph Executive Summary. MUST START by referencing the specific project background/context from the RFQ, then transition into how the Bidder's solution addresses it."
         },
         "persuasionScore": {
             "type": "NUMBER",
@@ -83,19 +83,19 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 reasons a buyer would say YES." },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 reasons a buyer would say NO." }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
             }
         },
         "legalRiskAlerts": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List dangerous legal clauses accepted without pushback (e.g., 'Unlimited Liability', 'IP Ownership'). If none, return empty."
+            "description": "List dangerous legal clauses accepted without pushback."
         },
         "submissionChecklist": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List of physical artifacts/attachments required by the RFQ (e.g., 'Tax Clearance', 'Appendix A', 'Gantt Chart')."
+            "description": "List of physical artifacts/attachments required by the RFQ."
         },
 
         // --- CORE COMPLIANCE FIELDS ---
@@ -507,7 +507,7 @@ const App = () => {
             const rfqContent = await processFile(RFQFile);
             const bidContent = await processFile(BidFile);
             
-            // IMPROVED PROMPT: Full SaaS Coach Instructions
+            // IMPROVED PROMPT: Fixed Industry Logic + Explicit Requirement Copying
             const systemPrompt = {
                 parts: [{
                     text: `You are the SmartBid Compliance Auditor & Coach.
@@ -521,7 +521,7 @@ const App = () => {
                     6. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
 
                     **TASK 2: Bid Coaching**
-                    1. GENERATE 'generatedExecutiveSummary': A perfect 1-paragraph executive summary bridging RFQ needs with Bidder solution.
+                    1. GENERATE 'generatedExecutiveSummary': A perfect 1-paragraph executive summary. MUST START by referencing the specific project background/context from the RFQ, then transition into how the Bidder's solution addresses it.
                     2. CALCULATE 'persuasionScore': 0-100 score based on confidence and active voice.
                     3. ANALYZE 'toneAnalysis': One word (e.g., Confident, Passive).
                     4. FIND 'weakWords': List up to 3 weak words used (e.g., hope, try).
@@ -1403,6 +1403,7 @@ const ComplianceReport = ({ report }) => {
                     <div className="flex justify-between w-full text-xs text-slate-400 mt-2 px-1">
                         <span>Pass</span><span>Partial</span><span>Fail</span>
                     </div>
+                    <p className="text-xs text-slate-400 mt-3 text-center">See detailed requirement breakdown below.</p>
                 </div>
 
                 {/* Persuasion Score */}
@@ -1416,9 +1417,10 @@ const ComplianceReport = ({ report }) => {
                                 Tone: {report.toneAnalysis || 'Neutral'}
                             </span>
                         </div>
+                        <p className="text-xs text-slate-400 mt-3 text-center">Measures confidence, active voice, and clarity.</p>
                         {report.weakWords && report.weakWords.length > 0 && (
-                            <p className="text-xs text-slate-400 mt-3 text-center">
-                                ⚠️ Weak words detected: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
+                            <p className="text-xs text-slate-400 mt-1 text-center">
+                                ⚠️ Weak words: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
                             </p>
                         )}
                     </div>
@@ -1428,9 +1430,9 @@ const ComplianceReport = ({ report }) => {
             {/* --- ZONE 3: The War Room (Win/Lose & Risks) --- */}
             {report.procurementVerdict && (
                 <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Why You Win */}
+                    {/* Winning Proposition Metrics */}
                     <div className="p-5 bg-green-900/20 rounded-xl border border-green-800">
-                        <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center"><ThumbsUp className="w-5 h-5 mr-2"/> Why Buyer Says YES</h4>
+                        <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center"><ThumbsUp className="w-5 h-5 mr-2"/> Proposal Winning Proposition Metrics</h4>
                         <ul className="space-y-2">
                             {report.procurementVerdict.winningFactors?.map((factor, i) => (
                                 <li key={i} className="flex items-start text-sm text-green-200">
@@ -1439,9 +1441,9 @@ const ComplianceReport = ({ report }) => {
                             ))}
                         </ul>
                     </div>
-                    {/* Why You Lose */}
+                    {/* Non-Winning Proposition Metrics */}
                     <div className="p-5 bg-red-900/20 rounded-xl border border-red-800">
-                        <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center"><ThumbsDown className="w-5 h-5 mr-2"/> Why Buyer Says NO</h4>
+                        <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center"><ThumbsDown className="w-5 h-5 mr-2"/> Proposal Non-Winning Proposition Metrics</h4>
                         <ul className="space-y-2">
                             {report.procurementVerdict.losingFactors?.map((factor, i) => (
                                 <li key={i} className="flex items-start text-sm text-red-200">
@@ -1527,7 +1529,8 @@ const ComplianceReport = ({ report }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {report.submissionChecklist.map((artifact, i) => (
                             <div key={i} className="flex items-center p-3 bg-slate-800 rounded-lg border border-slate-700">
-                                <input type="checkbox" className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 mr-3"/>
+                                {/* Replaced Checkbox with static Icon for professional reminder look */}
+                                <CheckCircle className="w-4 h-4 text-blue-500 mr-3 flex-shrink-0"/>
                                 <span className="text-sm text-slate-300">{artifact}</span>
                             </div>
                         ))}
