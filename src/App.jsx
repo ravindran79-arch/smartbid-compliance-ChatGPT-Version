@@ -65,7 +65,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a perfect, 1-paragraph Executive Summary. MUST START by referencing the specific project background/context from the RFQ, then transition into how the Bidder's solution addresses it."
+            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Value Proposition."
         },
         "persuasionScore": {
             "type": "NUMBER",
@@ -507,7 +507,7 @@ const App = () => {
             const rfqContent = await processFile(RFQFile);
             const bidContent = await processFile(BidFile);
             
-            // IMPROVED PROMPT: Fixed Industry Logic + Explicit Requirement Copying
+            // IMPROVED PROMPT: Strict Executive Summary Structure
             const systemPrompt = {
                 parts: [{
                     text: `You are the SmartBid Compliance Auditor & Coach.
@@ -521,7 +521,7 @@ const App = () => {
                     6. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
 
                     **TASK 2: Bid Coaching**
-                    1. GENERATE 'generatedExecutiveSummary': A perfect 1-paragraph executive summary. MUST START by referencing the specific project background/context from the RFQ, then transition into how the Bidder's solution addresses it.
+                    1. GENERATE 'generatedExecutiveSummary': Create a comprehensive Executive Summary. MANDATORY STRUCTURE: Sentence 1: State the Client's specific project need and context derived strictly from the RFQ. Sentence 2: State the Vendor's proposed solution. Sentence 3: State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer.
                     2. CALCULATE 'persuasionScore': 0-100 score based on confidence and active voice.
                     3. ANALYZE 'toneAnalysis': One word (e.g., Confident, Passive).
                     4. FIND 'weakWords': List up to 3 weak words used (e.g., hope, try).
@@ -1403,7 +1403,7 @@ const ComplianceReport = ({ report }) => {
                     <div className="flex justify-between w-full text-xs text-slate-400 mt-2 px-1">
                         <span>Pass</span><span>Partial</span><span>Fail</span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-3 text-center">See detailed requirement breakdown below.</p>
+                    <p className="text-xs text-slate-400 mt-3 text-center">View detailed score breakdown by requirement below.</p>
                 </div>
 
                 {/* Persuasion Score */}
@@ -1417,10 +1417,10 @@ const ComplianceReport = ({ report }) => {
                                 Tone: {report.toneAnalysis || 'Neutral'}
                             </span>
                         </div>
-                        <p className="text-xs text-slate-400 mt-3 text-center">Measures confidence, active voice, and clarity.</p>
+                        <p className="text-xs text-slate-400 mt-3 text-center">Based on confidence, active voice, and clarity.</p>
                         {report.weakWords && report.weakWords.length > 0 && (
                             <p className="text-xs text-slate-400 mt-1 text-center">
-                                ⚠️ Weak words: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
+                                ⚠️ Weak words detected: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
                             </p>
                         )}
                     </div>
@@ -1432,7 +1432,7 @@ const ComplianceReport = ({ report }) => {
                 <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Winning Proposition Metrics */}
                     <div className="p-5 bg-green-900/20 rounded-xl border border-green-800">
-                        <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center"><ThumbsUp className="w-5 h-5 mr-2"/> Proposal Winning Proposition Metrics</h4>
+                        <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center"><ThumbsUp className="w-5 h-5 mr-2"/> Proposal Winning Proposition</h4>
                         <ul className="space-y-2">
                             {report.procurementVerdict.winningFactors?.map((factor, i) => (
                                 <li key={i} className="flex items-start text-sm text-green-200">
@@ -1443,7 +1443,7 @@ const ComplianceReport = ({ report }) => {
                     </div>
                     {/* Non-Winning Proposition Metrics */}
                     <div className="p-5 bg-red-900/20 rounded-xl border border-red-800">
-                        <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center"><ThumbsDown className="w-5 h-5 mr-2"/> Proposal Non-Winning Proposition Metrics</h4>
+                        <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center"><ThumbsDown className="w-5 h-5 mr-2"/> Proposal Potential Flaws</h4>
                         <ul className="space-y-2">
                             {report.procurementVerdict.losingFactors?.map((factor, i) => (
                                 <li key={i} className="flex items-start text-sm text-red-200">
@@ -1530,7 +1530,7 @@ const ComplianceReport = ({ report }) => {
                         {report.submissionChecklist.map((artifact, i) => (
                             <div key={i} className="flex items-center p-3 bg-slate-800 rounded-lg border border-slate-700">
                                 {/* Replaced Checkbox with static Icon for professional reminder look */}
-                                <CheckCircle className="w-4 h-4 text-blue-500 mr-3 flex-shrink-0"/>
+                                <FileText className="w-4 h-4 text-blue-400 mr-3 flex-shrink-0"/>
                                 <span className="text-sm text-slate-300">{artifact}</span>
                             </div>
                         ))}
