@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
-    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, Printer, Download
+    Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, Printer, Download, MapPin, Calendar
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -44,31 +44,55 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- JSON Schema ---
+// --- UPDATED JSON Schema (5-Point Market Intel Pack) ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
-    description: "The complete compliance audit report with market intelligence data.",
+    description: "The complete compliance audit report with deep market intelligence data.",
     properties: {
         "projectTitle": {
             "type": "STRING",
-            "description": "Extract the OFFICIAL PROJECT TITLE from the RFQ cover page or header. Do not use the filename. Example: 'Offshore Pipeline Maintenance Phase 2'."
+            "description": "Extract the OFFICIAL PROJECT TITLE from the RFQ cover page or header."
         },
         "rfqScopeSummary": {
             "type": "STRING",
-            "description": "A high-level summary (2-3 sentences) combining the 'Project Background' and 'Scope of Work' from the RFQ."
+            "description": "A high-level summary (2-3 sentences) of the 'Background' and 'Scope of Work' from the RFQ."
         },
         "grandTotalValue": {
             "type": "STRING",
-            "description": "Extract the total proposed Bid Price/Cost from the Bid Document (e.g., '$450,000' or 'Not Disclosed'). If unclear, estimate or state 'Unknown'."
+            "description": "Extract the total proposed Bid Price/Cost (e.g., '$450,000' or 'Unknown')."
         },
         "industryTag": {
             "type": "STRING",
-            "description": "Classify the project into ONE industry sector based on keywords (e.g., drilling/pipeline -> 'Energy / Oil & Gas', cloud/server -> 'IT/SaaS', cement/steel -> 'Construction')."
+            "description": "Classify the project into ONE sector: 'Energy / Oil & Gas', 'Construction', 'IT/SaaS', 'Healthcare', 'Logistics', 'Consulting', 'Manufacturing', 'Financial', or 'Other'."
         },
         "primaryRisk": {
             "type": "STRING",
             "description": "In 5 words or less, state the biggest deal-breaker risk found in the bid."
         },
+        
+        // --- NEW MARKET INTEL FIELDS ---
+        "projectLocation": {
+            "type": "STRING",
+            "description": "Extract the geographic location of the project (e.g., 'Austin, TX', 'North Sea', 'Remote')."
+        },
+        "contractDuration": {
+            "type": "STRING",
+            "description": "Extract the proposed timeline or contract length (e.g., '3 Years', '60 Days', '12 Months')."
+        },
+        "techKeywords": {
+            "type": "STRING",
+            "description": "List the top 3 critical technologies, materials, or skills required (e.g., 'Python, AWS, React' or 'Steel, Concrete, HVAC')."
+        },
+        "incumbentSystem": {
+            "type": "STRING",
+            "description": "Identify if there is a legacy system or vendor being replaced (e.g., 'Replacing SAP', 'None mentioned')."
+        },
+        "requiredCertifications": {
+            "type": "STRING",
+            "description": "List key mandatory certifications (e.g., 'ISO 9001, HIPAA, FedRAMP' or 'None')."
+        },
+        // -------------------------------
+
         "executiveSummary": {
             "type": "STRING",
             "description": "A concise, high-level summary of the compliance audit findings."
@@ -80,7 +104,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                 properties: {
                     "requirementFromRFQ": { 
                         "type": "STRING",
-                        "description": "COPY THE EXACT TEXT of the specific mandatory requirement directly from the RFQ document. Do not summarize it." 
+                        "description": "COPY THE EXACT TEXT of the specific mandatory requirement directly from the RFQ document." 
                     },
                     "complianceScore": { "type": "NUMBER" },
                     "bidResponseSummary": { "type": "STRING" },
@@ -91,7 +115,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
             }
         }
     },
-    "required": ["projectTitle", "rfqScopeSummary", "grandTotalValue", "industryTag", "primaryRisk", "executiveSummary", "findings"]
+    "required": ["projectTitle", "rfqScopeSummary", "grandTotalValue", "industryTag", "primaryRisk", "projectLocation", "contractDuration", "techKeywords", "incumbentSystem", "requiredCertifications", "executiveSummary", "findings"]
 };
 
 // --- API Utility ---
@@ -483,7 +507,7 @@ const App = () => {
             const rfqContent = await processFile(RFQFile);
             const bidContent = await processFile(BidFile);
             
-            // IMPROVED PROMPT: Fixed Industry Logic + Explicit Requirement Copying
+            // IMPROVED PROMPT: Market Intel + Explicit Requirement Copying
             const systemPrompt = {
                 parts: [{
                     text: `You are the SmartBid Compliance Auditor. Your task is to strictly compare the RFQ and the Bid.
@@ -497,15 +521,23 @@ const App = () => {
                     4. EXTRACT 'primaryRisk': In 5 words or less, what is the biggest deal-breaker risk?
                     5. EXTRACT 'rfqScopeSummary': A 2-3 sentence summary combining the 'Background' and 'Scope of Work' sections of the RFQ.
                     
-                    6. Identify mandatory requirements from RFQ.
-                    7. Locate corresponding response in Bid.
-                    8. Score Compliance: 1 (Full), 0.5 (Partial), 0 (Non-Compliant).
-                    9. Category: ${CATEGORY_ENUM.join(', ')}.
-                    10. Negotiation Stance: Required for scores < 1.
+                    // --- NEW MARKET FIELDS ---
+                    6. EXTRACT 'projectLocation': (e.g., 'Austin, TX').
+                    7. EXTRACT 'contractDuration': (e.g., '3 Years').
+                    8. EXTRACT 'techKeywords': (e.g., 'Python, AWS' or 'Steel, HVAC').
+                    9. EXTRACT 'incumbentSystem': (e.g., 'Replacing SAP' or 'None').
+                    10. EXTRACT 'requiredCertifications': (e.g., 'ISO 9001' or 'None').
+                    // -------------------------
+
+                    11. Identify mandatory requirements from RFQ.
+                    12. Locate corresponding response in Bid.
+                    13. Score Compliance: 1 (Full), 0.5 (Partial), 0 (Non-Compliant).
+                    14. Category: ${CATEGORY_ENUM.join(', ')}.
+                    15. Negotiation Stance: Required for scores < 1.
                     
                     **CRITICAL STEP**: For each finding, you MUST copy the EXACT text of the requirement from the RFQ into the field 'requirementFromRFQ'. Do not summarize it.
                     
-                    11. Generate JSON output ONLY.`
+                    16. Generate JSON output ONLY.`
                 }]
             };
 
@@ -1036,6 +1068,9 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
                                 </span>
                                 <h4 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">{projectTitleDisplay}</h4>
                             </div>
+                            <p className="text-sm text-slate-400 mt-1 flex items-center">
+                                <MapPin className="w-3 h-3 mr-1"/> {item.projectLocation || 'Unknown Location'} • <Calendar className="w-3 h-3 ml-2 mr-1"/> {item.contractDuration || 'Duration N/A'}
+                            </p>
                             <p className="text-sm text-slate-400 mt-1 flex items-center">
                                 <User className="w-3 h-3 mr-1"/> Vendor: {getUserForReport(item.ownerId)}
                             </p>
