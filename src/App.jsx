@@ -65,7 +65,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Value Proposition."
+            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
         },
         "persuasionScore": {
             "type": "NUMBER",
@@ -521,7 +521,7 @@ const App = () => {
                     6. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
 
                     **TASK 2: Bid Coaching**
-                    1. GENERATE 'generatedExecutiveSummary': Create a comprehensive Executive Summary. MANDATORY STRUCTURE: Sentence 1: State the Client's specific project need and context derived strictly from the RFQ. Sentence 2: State the Vendor's proposed solution. Sentence 3: State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer.
+                    1. GENERATE 'generatedExecutiveSummary': Create a comprehensive Executive Summary. MANDATORY STRUCTURE: Sentence 1: State the Client's specific project need and context derived strictly from the RFQ (e.g. 'Regarding the Client's need for X...'). Sentence 2: State the Vendor's proposed solution. Sentence 3: State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer.
                     2. CALCULATE 'persuasionScore': 0-100 score based on confidence and active voice.
                     3. ANALYZE 'toneAnalysis': One word (e.g., Confident, Passive).
                     4. FIND 'weakWords': List up to 3 weak words used (e.g., hope, try).
@@ -1524,7 +1524,7 @@ const ComplianceReport = ({ report }) => {
             {report.submissionChecklist && report.submissionChecklist.length > 0 && (
                 <div className="mt-12 p-6 bg-slate-700/30 rounded-xl border border-slate-600 border-dashed">
                     <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-                        <Paperclip className="w-5 h-5 mr-2 text-slate-400"/> Final Submission Artifact Checklist
+                        <Paperclip className="w-5 h-5 mr-2 text-slate-400"/> Identified Required Attachment/Appendices From RFQ
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {report.submissionChecklist.map((artifact, i) => (
