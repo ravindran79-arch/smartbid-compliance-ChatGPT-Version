@@ -32,9 +32,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
-const API_MODEL = "gemini-2.5-flash-preview-09-2025";
-const API_KEY = import.meta.env.VITE_API_KEY; 
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
+// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
+const API_URL = '/api/analyze'; 
 
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
 
