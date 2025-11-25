@@ -32,9 +32,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
+// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
 const API_URL = '/api/analyze'; 
+
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
-const MAX_FREE_AUDITS = 3; // HARD LIMIT
+const MAX_FREE_AUDITS = 3; // HARD LIMIT for Non-Admins
 
 const PAGE = {
     HOME: 'HOME',
@@ -43,41 +45,67 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- JSON Schema ---
+// --- UPDATED JSON Schema (Refined for Professional Output) ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
     properties: {
-        "projectTitle": { "type": "STRING" },
-        "rfqScopeSummary": { "type": "STRING" },
-        "grandTotalValue": { "type": "STRING" },
-        "industryTag": { "type": "STRING" },
-        "primaryRisk": { "type": "STRING" },
-        "projectLocation": { "type": "STRING" },
-        "contractDuration": { "type": "STRING" },
-        "techKeywords": { "type": "STRING" },
-        "incumbentSystem": { "type": "STRING" },
-        "requiredCertifications": { "type": "STRING" },
-        "generatedExecutiveSummary": { "type": "STRING" },
-        "persuasionScore": { "type": "NUMBER" },
-        "toneAnalysis": { "type": "STRING" },
-        "weakWords": { "type": "ARRAY", "items": { "type": "STRING" } },
+        // --- ADMIN / MARKET INTEL FIELDS ---
+        "projectTitle": { "type": "STRING", "description": "Official Project Title from RFQ." },
+        "rfqScopeSummary": { "type": "STRING", "description": "High-level scope summary from RFQ." },
+        "grandTotalValue": { "type": "STRING", "description": "Total Bid Price/Cost." },
+        "industryTag": { "type": "STRING", "description": "Industry Sector." },
+        "primaryRisk": { "type": "STRING", "description": "Biggest deal-breaker risk." },
+        "projectLocation": { "type": "STRING", "description": "Geographic location." },
+        "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
+        "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
+        "incumbentSystem": { "type": "STRING", "description": "Legacy system being replaced." },
+        "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
+
+        // --- USER COACHING FIELDS ---
+        "generatedExecutiveSummary": {
+            "type": "STRING",
+            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
+        },
+        "persuasionScore": {
+            "type": "NUMBER",
+            "description": "Score from 0-100 based on confidence, active voice, and clarity of the Bid."
+        },
+        "toneAnalysis": {
+            "type": "STRING",
+            "description": "One word describing the bid tone (e.g., 'Confident', 'Passive', 'Vague', 'Aggressive')."
+        },
+        "weakWords": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List up to 3 weak words found (e.g., 'hope', 'believe', 'try')."
+        },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" } },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" } }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
             }
         },
-        "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
-        "submissionChecklist": { "type": "ARRAY", "items": { "type": "STRING" } },
-        "executiveSummary": { "type": "STRING" },
+        "legalRiskAlerts": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List dangerous legal clauses accepted without pushback."
+        },
+        "submissionChecklist": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List of physical artifacts/attachments required by the RFQ."
+        },
+
+        // --- CORE COMPLIANCE FIELDS ---
+        "executiveSummary": { "type": "STRING", "description": "Audit summary." },
         "findings": {
             type: "ARRAY",
             items: {
                 type: "OBJECT",
                 properties: {
-                    "requirementFromRFQ": { "type": "STRING" },
+                    "requirementFromRFQ": { "type": "STRING", "description": "EXACT TEXT of requirement." },
                     "complianceScore": { "type": "NUMBER" },
                     "bidResponseSummary": { "type": "STRING" },
                     "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
@@ -105,9 +133,15 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 };
 
 // --- FIRESTORE UTILITIES ---
-const getUsageDocRef = (db, userId) => doc(db, `users/${userId}/usage_limits`, 'main_tracker');
-const getReportsCollectionRef = (db, userId) => collection(db, `users/${userId}/compliance_reports`);
+const getUsageDocRef = (db, userId) => {
+    return doc(db, `users/${userId}/usage_limits`, 'main_tracker');
+};
 
+const getReportsCollectionRef = (db, userId) => {
+    return collection(db, `users/${userId}/compliance_reports`);
+};
+
+// --- Calculation Utility ---
 const getCompliancePercentage = (report) => {
     const findings = report.findings || []; 
     const totalScore = findings.reduce((sum, item) => sum + (item.complianceScore || 0), 0);
@@ -120,6 +154,7 @@ const processFile = (file) => {
     return new Promise(async (resolve, reject) => {
         const fileExtension = file.name.split('.').pop().toLowerCase();
         const reader = new FileReader();
+
         if (fileExtension === 'txt') {
             reader.onload = (event) => resolve(event.target.result);
             reader.onerror = reject;
@@ -457,7 +492,8 @@ const App = () => {
 
     const handleAnalyze = useCallback(async (role) => {
         // --- PAYWALL CHECK ---
-        // If user is NOT Admin AND NOT Subscribed AND has exceeded limit
+        // ADMIN bypasses all limits.
+        // Non-Subscribed Users get blocked at limit.
         if (currentUser?.role !== 'ADMIN' && !usageLimits.isSubscribed && usageLimits.bidderChecks >= MAX_FREE_AUDITS) {
             setShowPaywall(true);
             return;
@@ -692,8 +728,13 @@ const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentU
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
                     <h2 className="text-2xl font-bold text-white">{title}</h2>
                     <div className="text-right">
-                        <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>
-                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500">Logout</button>
+                        {/* ADMIN BYPASS DISPLAY FIX */}
+                        {currentUser?.role === 'ADMIN' ? (
+                            <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p>
+                        ) : (
+                            <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>
+                        )}
+                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
                     </div>
                 </div>
                 <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
@@ -730,7 +771,7 @@ const ComplianceReport = ({ report }) => {
 
     return (
         <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 mt-8">
-            <h2 className="text-3xl font-extrabold text-white flex items-center mb-6 border-b border-slate-700 pb-4"><List className="w-6 h-6 mr-3 text-amber-400"/> Compliance Report</h2>
+            <h2 className="text-3xl font-extrabold text-white flex items-center mb-6 border-b border-slate-700 pb-4"><List className="w-6 h-6 mr-3 text-amber-400"/> Comprehensive Compliance Report</h2>
             {report.generatedExecutiveSummary && (
                 <div className="mb-8 p-6 bg-gradient-to-r from-blue-900/40 to-slate-800 rounded-xl border border-blue-500/30">
                     <h3 className="text-xl font-bold text-blue-200 mb-3 flex items-center"><Award className="w-5 h-5 mr-2 text-yellow-400"/> AI-Suggested Executive Summary</h3>
@@ -742,7 +783,7 @@ const ComplianceReport = ({ report }) => {
                     <p className="text-sm font-semibold text-white mb-1"><BarChart2 className="w-4 h-4 inline mr-2"/> Compliance Score</p>
                     <div className="text-5xl font-extrabold text-amber-400">{overallPercentage}%</div>
                     <div className="w-full h-3 bg-slate-900 rounded-full flex overflow-hidden mt-4"><div style={{ width: getWidth('COMPLIANT') }} className="bg-green-500"></div><div style={{ width: getWidth('PARTIAL') }} className="bg-amber-500"></div><div style={{ width: getWidth('NON-COMPLIANT') }} className="bg-red-500"></div></div>
-                    <p className="text-xs text-slate-400 mt-3">View detailed breakdown below.</p>
+                    <p className="text-xs text-slate-400 mt-3">View detailed score breakdown by requirement below.</p>
                 </div>
                 {report.persuasionScore !== undefined && (
                     <div className="p-5 bg-slate-700/50 rounded-xl border border-purple-600/50 text-center relative overflow-hidden">
