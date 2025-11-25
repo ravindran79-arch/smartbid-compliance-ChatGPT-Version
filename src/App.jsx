@@ -3,7 +3,7 @@ import {
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
     Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, 
-    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award
+    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -32,10 +32,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
-// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
 const API_URL = '/api/analyze'; 
-
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
+const MAX_FREE_AUDITS = 3; // HARD LIMIT
 
 const PAGE = {
     HOME: 'HOME',
@@ -44,67 +43,41 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- UPDATED JSON Schema (Refined for Professional Output) ---
+// --- JSON Schema ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
     properties: {
-        // --- ADMIN / MARKET INTEL FIELDS ---
-        "projectTitle": { "type": "STRING", "description": "Official Project Title from RFQ." },
-        "rfqScopeSummary": { "type": "STRING", "description": "High-level scope summary from RFQ." },
-        "grandTotalValue": { "type": "STRING", "description": "Total Bid Price/Cost." },
-        "industryTag": { "type": "STRING", "description": "Industry Sector." },
-        "primaryRisk": { "type": "STRING", "description": "Biggest deal-breaker risk." },
-        "projectLocation": { "type": "STRING", "description": "Geographic location." },
-        "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
-        "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
-        "incumbentSystem": { "type": "STRING", "description": "Legacy system being replaced." },
-        "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
-
-        // --- USER COACHING FIELDS ---
-        "generatedExecutiveSummary": {
-            "type": "STRING",
-            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
-        },
-        "persuasionScore": {
-            "type": "NUMBER",
-            "description": "Score from 0-100 based on confidence, active voice, and clarity of the Bid."
-        },
-        "toneAnalysis": {
-            "type": "STRING",
-            "description": "One word describing the bid tone (e.g., 'Confident', 'Passive', 'Vague', 'Aggressive')."
-        },
-        "weakWords": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List up to 3 weak words found (e.g., 'hope', 'believe', 'try')."
-        },
+        "projectTitle": { "type": "STRING" },
+        "rfqScopeSummary": { "type": "STRING" },
+        "grandTotalValue": { "type": "STRING" },
+        "industryTag": { "type": "STRING" },
+        "primaryRisk": { "type": "STRING" },
+        "projectLocation": { "type": "STRING" },
+        "contractDuration": { "type": "STRING" },
+        "techKeywords": { "type": "STRING" },
+        "incumbentSystem": { "type": "STRING" },
+        "requiredCertifications": { "type": "STRING" },
+        "generatedExecutiveSummary": { "type": "STRING" },
+        "persuasionScore": { "type": "NUMBER" },
+        "toneAnalysis": { "type": "STRING" },
+        "weakWords": { "type": "ARRAY", "items": { "type": "STRING" } },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" } },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" } }
             }
         },
-        "legalRiskAlerts": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List dangerous legal clauses accepted without pushback."
-        },
-        "submissionChecklist": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List of physical artifacts/attachments required by the RFQ."
-        },
-
-        // --- CORE COMPLIANCE FIELDS ---
-        "executiveSummary": { "type": "STRING", "description": "Audit summary." },
+        "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "submissionChecklist": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "executiveSummary": { "type": "STRING" },
         "findings": {
             type: "ARRAY",
             items: {
                 type: "OBJECT",
                 properties: {
-                    "requirementFromRFQ": { "type": "STRING", "description": "EXACT TEXT of requirement." },
+                    "requirementFromRFQ": { "type": "STRING" },
                     "complianceScore": { "type": "NUMBER" },
                     "bidResponseSummary": { "type": "STRING" },
                     "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
@@ -132,15 +105,9 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 };
 
 // --- FIRESTORE UTILITIES ---
-const getUsageDocRef = (db, userId) => {
-    return doc(db, `users/${userId}/usage_limits`, 'main_tracker');
-};
+const getUsageDocRef = (db, userId) => doc(db, `users/${userId}/usage_limits`, 'main_tracker');
+const getReportsCollectionRef = (db, userId) => collection(db, `users/${userId}/compliance_reports`);
 
-const getReportsCollectionRef = (db, userId) => {
-    return collection(db, `users/${userId}/compliance_reports`);
-};
-
-// --- Calculation Utility ---
 const getCompliancePercentage = (report) => {
     const findings = report.findings || []; 
     const totalScore = findings.reduce((sum, item) => sum + (item.complianceScore || 0), 0);
@@ -153,7 +120,6 @@ const processFile = (file) => {
     return new Promise(async (resolve, reject) => {
         const fileExtension = file.name.split('.').pop().toLowerCase();
         const reader = new FileReader();
-
         if (fileExtension === 'txt') {
             reader.onload = (event) => resolve(event.target.result);
             reader.onerror = reject;
@@ -232,6 +198,36 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
         />
     </div>
 );
+
+// --- Paywall Modal ---
+const PaywallModal = ({ show, onClose }) => {
+    if (!show) return null;
+    return (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-2xl shadow-2xl border border-amber-500/50 max-w-md w-full p-8 text-center relative">
+                <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-amber-500 rounded-full p-4 shadow-lg shadow-amber-500/50">
+                    <Lock className="w-10 h-10 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mt-8 mb-2">Trial Limit Reached</h2>
+                <p className="text-slate-300 mb-6">
+                    You have used your <span className="text-amber-400 font-bold">3 Free Audits</span>.
+                    <br/>To continue winning bids, upgrade to Pro.
+                </p>
+                <div className="bg-slate-700/50 rounded-xl p-4 mb-6 text-left space-y-3">
+                    <div className="flex items-center text-sm text-white"><CheckCircle className="w-4 h-4 mr-3 text-green-400"/> Unlimited Compliance Audits</div>
+                    <div className="flex items-center text-sm text-white"><CheckCircle className="w-4 h-4 mr-3 text-green-400"/> AI Sales Coach & Tone Analysis</div>
+                    <div className="flex items-center text-sm text-white"><CheckCircle className="w-4 h-4 mr-3 text-green-400"/> Market Intelligence Data</div>
+                </div>
+                <button className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl transition-all shadow-lg mb-3 flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 mr-2"/> Upgrade Now - $10/mo
+                </button>
+                <button onClick={onClose} className="text-sm text-slate-400 hover:text-white">
+                    Maybe Later (Return to Home)
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
@@ -336,10 +332,10 @@ const App = () => {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [userId, setUserId] = useState(null);
-    const [usageLimits, setUsageLimits] = useState({ initiatorChecks: 0, bidderChecks: 0, isSubscribed: true });
+    const [usageLimits, setUsageLimits] = useState({ initiatorChecks: 0, bidderChecks: 0, isSubscribed: false });
     const [reportsHistory, setReportsHistory] = useState([]);
+    const [showPaywall, setShowPaywall] = useState(false);
     
-    // File & Report State
     const [RFQFile, setRFQFile] = useState(null);
     const [BidFile, setBidFile] = useState(null);
     const [report, setReport] = useState(null);
@@ -349,12 +345,10 @@ const App = () => {
     // --- EFFECT 1: Auth State Listener ---
     useEffect(() => {
         if (!auth) return;
-        
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setUserId(user.uid);
                 setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
-                
                 try {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
                     if (userDoc.exists()) {
@@ -373,7 +367,6 @@ const App = () => {
             }
             setIsAuthReady(true);
         });
-
         return () => unsubscribe();
     }, []);
 
@@ -381,28 +374,29 @@ const App = () => {
     useEffect(() => {
         if (db && userId) {
             const docRef = getUsageDocRef(db, userId);
-
             const unsubscribe = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    setUsageLimits({ ...docSnap.data(), isSubscribed: true });
+                    // Load usage limits. If undefined, assume 0 and not subscribed.
+                    setUsageLimits({ 
+                        bidderChecks: docSnap.data().bidderChecks || 0, 
+                        isSubscribed: docSnap.data().isSubscribed || false 
+                    });
                 } else {
-                    const initialData = { initiatorChecks: 0, bidderChecks: 0, isSubscribed: true };
+                    // Initialize new user with 0 checks and false subscription
+                    const initialData = { initiatorChecks: 0, bidderChecks: 0, isSubscribed: false };
                     setDoc(docRef, initialData).catch(e => console.error("Error creating usage doc:", e));
                     setUsageLimits(initialData);
                 }
             }, (error) => console.error("Error listening to usage limits:", error));
-
             return () => unsubscribe();
         }
     }, [userId]);
 
-    // --- EFFECT 3: Report History Listener (Admin Aware) ---
+    // --- EFFECT 3: Report History Listener ---
     useEffect(() => {
         if (!db || !currentUser) return;
-
         let unsubscribeSnapshot = null;
         let q;
-
         try {
             if (currentUser.role === 'ADMIN') {
                 const collectionGroupRef = collectionGroup(db, 'compliance_reports');
@@ -411,446 +405,207 @@ const App = () => {
                 const reportsRef = getReportsCollectionRef(db, userId);
                 q = query(reportsRef);
             }
-
             if (q) {
                 unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
                     const history = [];
                     snapshot.forEach(docSnap => {
                         const ownerId = docSnap.ref.parent.parent ? docSnap.ref.parent.parent.id : userId;
-                        history.push({ 
-                            id: docSnap.id, 
-                            ownerId: ownerId, 
-                            ...docSnap.data() 
-                        });
+                        history.push({ id: docSnap.id, ownerId: ownerId, ...docSnap.data() });
                     });
                     history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                     setReportsHistory(history);
-                }, (error) => {
-                    console.error('Error listening to reports:', error);
                 });
             }
-        } catch (err) {
-            console.error("Error setting up history listener:", err);
-        }
-
+        } catch (err) { console.error("Error setting up history listener:", err); }
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
     // --- EFFECT 4: Load Libraries ---
     useEffect(() => {
-        const loadScript = (src, libraryName) => {
+        const loadScript = (src) => {
             return new Promise((resolve, reject) => {
-                if (document.querySelector(`script[src="${src}"]`)) {
-                    resolve(); 
-                    return;
-                }
+                if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
                 const script = document.createElement('script');
                 script.src = src;
                 script.onload = resolve;
-                script.onerror = () => reject(new Error(`Failed to load external script for ${libraryName}: ${src}`));
+                script.onerror = () => reject();
                 document.head.appendChild(script);
             });
         };
-
         const loadAllLibraries = async () => {
             try {
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js", "PDF.js");
-                if (window.pdfjsLib) {
-                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                }
-            } catch (e) {
-                console.warn("PDF support will be unavailable.");
-            }
-            try {
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js", "Mammoth.js");
-            } catch (e) {
-                console.warn("DOCX support will be unavailable.");
-            }
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
+                if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
+            } catch (e) { console.warn("Doc parsing libs failed."); }
         };
-        
         loadAllLibraries();
     }, []); 
 
-    // --- LOGIC: Increment Usage ---
-    const incrementUsage = async (roleKey) => {
+    const incrementUsage = async () => {
         if (!db || !userId) return;
         const docRef = getUsageDocRef(db, userId);
-
         try {
             await runTransaction(db, async (transaction) => {
                 const docSnap = await transaction.get(docRef);
-                let currentData = docSnap.exists() ? docSnap.data() : { initiatorChecks: 0, bidderChecks: 0, isSubscribed: true };
+                const currentData = docSnap.exists() ? docSnap.data() : { bidderChecks: 0, isSubscribed: false };
                 if (!docSnap.exists()) transaction.set(docRef, currentData);
-                
-                const newCount = (currentData[roleKey] || 0) + 1;
-                transaction.update(docRef, { [roleKey]: newCount, isSubscribed: true });
-                setUsageLimits(prev => ({ ...prev, [roleKey]: newCount }));
+                transaction.update(docRef, { bidderChecks: (currentData.bidderChecks || 0) + 1 });
             });
-        } catch (e) {
-            console.error("Transaction failed to update usage:", e);
-        }
+        } catch (e) { console.error("Usage update failed:", e); }
     };
 
-    // --- CORE LOGIC: Analysis ---
     const handleAnalyze = useCallback(async (role) => {
-        if (!RFQFile || !BidFile) {
-            setErrorMessage("Please upload both the RFQ and the Bid documents.");
+        // --- PAYWALL CHECK ---
+        // If user is NOT Admin AND NOT Subscribed AND has exceeded limit
+        if (currentUser?.role !== 'ADMIN' && !usageLimits.isSubscribed && usageLimits.bidderChecks >= MAX_FREE_AUDITS) {
+            setShowPaywall(true);
             return;
         }
 
-        setLoading(true);
-        setReport(null);
-        setErrorMessage(null);
+        if (!RFQFile || !BidFile) { setErrorMessage("Please upload both documents."); return; }
+        setLoading(true); setReport(null); setErrorMessage(null);
 
         try {
             const rfqContent = await processFile(RFQFile);
             const bidContent = await processFile(BidFile);
             
-            // IMPROVED PROMPT: Strict Executive Summary Structure
             const systemPrompt = {
                 parts: [{
                     text: `You are the SmartBid Compliance Auditor & Coach.
                     
-                    **TASK 1: Market Intel Extraction**
-                    1. EXTRACT 'projectTitle': Official Title from RFQ.
-                    2. EXTRACT 'grandTotalValue': Total Bid Price.
-                    3. EXTRACT 'industryTag': Keyword-based sector (Energy, Construction, IT, etc.).
-                    4. EXTRACT 'primaryRisk': Biggest deal-breaker risk.
-                    5. EXTRACT 'rfqScopeSummary': 2-3 sentence scope summary.
-                    6. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
+                    **TASK 1: Market Intel**
+                    1. EXTRACT 'projectTitle', 'grandTotalValue', 'industryTag', 'primaryRisk', 'rfqScopeSummary'.
+                    2. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
 
                     **TASK 2: Bid Coaching**
-                    1. GENERATE 'generatedExecutiveSummary': Create a comprehensive Executive Summary. MANDATORY STRUCTURE: Sentence 1: State the Client's specific project need and context derived strictly from the RFQ (e.g. 'Regarding the Client's need for X...'). Sentence 2: State the Vendor's proposed solution. Sentence 3: State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer.
-                    2. CALCULATE 'persuasionScore': 0-100 score based on confidence and active voice.
-                    3. ANALYZE 'toneAnalysis': One word (e.g., Confident, Passive).
-                    4. FIND 'weakWords': List up to 3 weak words used (e.g., hope, try).
-                    5. JUDGE 'procurementVerdict': List 3 'winningFactors' (Why Yes) and 3 'losingFactors' (Why No).
-                    6. ALERT 'legalRiskAlerts': List dangerous clauses accepted (Indemnity, Liability).
-                    7. CHECK 'submissionChecklist': List required artifacts (Appendix, Tax Cert).
+                    1. GENERATE 'generatedExecutiveSummary': MANDATORY: Start by referencing the specific Project Background from the RFQ, then transition to the Vendor's solution and value proposition.
+                    2. CALCULATE 'persuasionScore' (0-100).
+                    3. ANALYZE 'toneAnalysis' (One word).
+                    4. FIND 'weakWords' (List 3).
+                    5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
+                    6. ALERT 'legalRiskAlerts'.
+                    7. CHECK 'submissionChecklist' (List artifacts).
 
                     **TASK 3: Compliance Audit**
                     1. Identify mandatory requirements.
-                    2. Locate response.
-                    3. Score (1/0.5/0).
-                    4. CRITICAL: Copy EXACT text to 'requirementFromRFQ'.
+                    2. Score (1/0.5/0).
+                    3. CRITICAL: Copy EXACT text to 'requirementFromRFQ'.
                     
-                    Output strictly as JSON.`
+                    Output JSON.`
                 }]
             };
 
-            const userQuery = `RFQ Document (Doc A):\n${rfqContent}\n\nBid Document (Doc B):\n${bidContent}\n\nPerform compliance audit & coaching.`;
-            
+            const userQuery = `RFQ:\n${rfqContent}\n\nBid:\n${bidContent}\n\nPerform audit.`;
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
                 systemInstruction: systemPrompt,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: COMPREHENSIVE_REPORT_SCHEMA
-                },
+                generationConfig: { responseMimeType: "application/json", responseSchema: COMPREHENSIVE_REPORT_SCHEMA },
             };
 
-            const options = {
+            const response = await fetchWithRetry(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            };
-
-            const response = await fetchWithRetry(API_URL, options);
+            });
             const result = await response.json();
-            
             const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (jsonText) {
-                const parsedReport = JSON.parse(jsonText); 
-                setReport(parsedReport);
-                await incrementUsage('bidderChecks');
-            } else {
-                throw new Error("AI failed to return a valid JSON report.");
-            }
+                setReport(JSON.parse(jsonText));
+                await incrementUsage();
+            } else { throw new Error("AI returned invalid data."); }
 
         } catch (error) {
-            console.error("Analysis Error:", error);
-            setErrorMessage(`Failed to generate report. Details: ${error.message}.`);
-        } finally {
-            setLoading(false);
-        }
-    }, [RFQFile, BidFile]);
+            setErrorMessage(`Analysis failed: ${error.message}`);
+        } finally { setLoading(false); }
+    }, [RFQFile, BidFile, usageLimits, currentUser]);
 
-    // --- CORE LOGIC: Test Data ---
     const generateTestData = useCallback(async () => {
-        const mockRfqContent = `
-PROJECT TITLE: OFFSHORE PIPELINE MAINTENANCE PHASE 3
-BACKGROUND: This project involves the inspection and repair of subsea pipelines in the North Sea.
-SCOPE OF WORK: Contractor shall provide a diving support vessel and ROV team for 60 days.
-ATTACHMENTS: Please attach Appendix A (Safety Record) and Tax Clearance Certificate.
-1. TECHNICAL: The proposed cloud solution must integrate bi-directionally with our legacy billing system via its existing REST/JSON API endpoints, as detailed in Appendix B. This is a mandatory core technical specification.
-2. FINANCIAL: Bidders must submit a Firm Fixed Price (FFP) quote for all services covering the first 12 calendar months of operation. Cost estimates or time-and-materials pricing will result in non-compliance.
-3. LEGAL: A signed, legally binding Non-Disclosure Agreement (NDA) must be included as a separate document, titled "Appendix A," within the submission package.
-4. TIMELINE: The entire migration project, including final testing and sign-off, must be completed and live within 60 calendar days of contract award.
-5. ADMINISTRATIVE: The entire bid package (including all appendices) must be submitted electronically as a single, consolidated PDF document.
-        `.trim();
-        
-        const mockBidContent = `
---- EXECUTIVE SUMMARY ---
-We hope to submit our proposal for the Cloud Migration Service. We believe we are a good partner.
-
---- TECHNICAL RESPONSE ---
-1. Technical Integration: We propose using our cutting-edge GraphQL gateway for integration, as it offers superior flexibility. While we prefer GraphQL, we understand the requirement for REST/JSON integration with the legacy billing system. We can certainly look into developing the necessary REST/JSON adaptors during the implementation phase, contingent upon a change order if complexity is higher than anticipated.
-
---- FINANCIALS ---
-2. Financials: We have outlined our estimated costs for the first 12 months in the following table. Our estimated price is $850,000. This estimate is subject to final scoping validation but provides a clear indication of cost.
-
---- LEGAL COMPLIANCE ---
-3. Legal: We are happy to execute the NDA referenced in your RFQ. Our standard policy dictates that the NDA process is initiated immediately following the Notice of Intent to Award and prior to the commencement of work.
-
---- PROJECT PLAN ---
-4. Timeline: We commit to the 60 calendar day timeline specified for project completion.
-5. Submission Format: We confirm that this document, along with all supporting materials, has been consolidated and submitted as a single PDF file for your review.
-        `.trim();
-
-        setRFQFile(null);
-        setBidFile(null);
-        setReport(null);
-        setLoading(true);
-        setErrorMessage(null);
-
-        try {
-            const mockRFQFile = new File([mockRfqContent], "MOCK_RFQ_SIMPLIFIED.txt", { type: "text/plain" });
-            const mockBidFile = new File([mockBidContent], "MOCK_BID_SIMPLIFIED.txt", { type: "text/plain" });
-            
-            setRFQFile(mockRFQFile);
-            setBidFile(mockBidFile);
-            setErrorMessage("Mock documents loaded! Click 'RUN COMPLIANCE AUDIT' to see the Standard Score.");
-
-        } catch (error) {
-            console.error("Test Data Generation Error:", error);
-            setErrorMessage(`Failed to generate test data: ${error.message}`);
-        } finally {
-            setLoading(false);
-        }
+        const mockRfqContent = `PROJECT TITLE: OFFSHORE PIPELINE MAINT.\nSCOPE: Inspect pipelines.\n1. TECH: REST API required.`;
+        const mockBidContent = `EXECUTIVE SUMMARY: We will do it.\n1. We use GraphQL.`;
+        setRFQFile(new File([mockRfqContent], "MOCK_RFQ.txt", { type: "text/plain" }));
+        setBidFile(new File([mockBidContent], "MOCK_BID.txt", { type: "text/plain" }));
+        setErrorMessage("Mock docs loaded. Click Run Audit.");
     }, []);
 
-    // --- CORE LOGIC: Save Report ---
     const saveReport = useCallback(async (role) => {
-        if (!db || !userId || !report) {
-            setErrorMessage("Database not ready or no report to save.");
-            return;
-        }
+        if (!db || !userId || !report) { setErrorMessage("No report to save."); return; }
         setSaving(true);
         try {
             const reportsRef = getReportsCollectionRef(db, userId);
-            
             await addDoc(reportsRef, {
                 ...report,
-                rfqName: RFQFile?.name || 'Untitled RFQ',
-                bidName: BidFile?.name || 'Untitled Bid',
+                rfqName: RFQFile?.name || 'Untitled',
+                bidName: BidFile?.name || 'Untitled',
                 timestamp: Date.now(),
                 role: role, 
             });
-            
-            setErrorMessage("Report saved successfully to history!"); 
+            setErrorMessage("Report saved successfully!"); 
             setTimeout(() => setErrorMessage(null), 3000);
-
         } catch (error) {
-            console.error("Error saving report:", error);
-            setErrorMessage(`Failed to save: ${error.message}. (Check Firebase Console > Firestore Database > Rules)`);
-        } finally {
-            setSaving(false);
-        }
+            setErrorMessage(`Failed to save: ${error.message}.`);
+        } finally { setSaving(false); }
     }, [db, userId, report, RFQFile, BidFile]);
     
-    // --- CORE LOGIC: Delete Report ---
     const deleteReport = useCallback(async (reportId, rfqName, bidName) => {
-        if (!db || !userId) {
-            setErrorMessage("Database not ready.");
-            return;
-        }
-        setErrorMessage(`Deleting report: ${rfqName} vs ${bidName}...`);
-        
+        if (!db || !userId) return;
+        setErrorMessage(`Deleting...`);
         try {
             const reportsRef = getReportsCollectionRef(db, userId);
-            const docRef = doc(reportsRef, reportId);
-            
-            await deleteDoc(docRef);
-
-            if (report && report.id === reportId) {
-                setReport(null);
-            }
-            
-            setErrorMessage("Report deleted successfully!");
+            await deleteDoc(doc(reportsRef, reportId));
+            if (report && report.id === reportId) setReport(null);
+            setErrorMessage("Deleted!");
             setTimeout(() => setErrorMessage(null), 3000);
-
-        } catch (error) {
-            console.error("Error deleting report:", error);
-            setErrorMessage(`Failed to delete report: ${error.message}`);
-        }
+        } catch (error) { setErrorMessage(`Delete failed: ${error.message}`); }
     }, [db, userId, report]);
 
-
     const loadReportFromHistory = useCallback((historyItem) => {
-        setRFQFile(null);
-        setBidFile(null);
-        setReport({
-            id: historyItem.id, 
-            // Load all new fields
-            executiveSummary: historyItem.executiveSummary,
-            findings: historyItem.findings,
-            generatedExecutiveSummary: historyItem.generatedExecutiveSummary,
-            persuasionScore: historyItem.persuasionScore,
-            toneAnalysis: historyItem.toneAnalysis,
-            weakWords: historyItem.weakWords,
-            procurementVerdict: historyItem.procurementVerdict,
-            legalRiskAlerts: historyItem.legalRiskAlerts,
-            submissionChecklist: historyItem.submissionChecklist
-        });
+        setRFQFile(null); setBidFile(null);
+        setReport({ id: historyItem.id, ...historyItem });
         setCurrentPage(PAGE.COMPLIANCE_CHECK); 
-        setErrorMessage(`Loaded report: ${historyItem.rfqName} vs ${historyItem.bidName}`);
+        setErrorMessage(`Loaded: ${historyItem.rfqName}`);
         setTimeout(() => setErrorMessage(null), 3000);
     }, []);
     
-    // --- Render Switch ---
     const renderPage = () => {
         switch (currentPage) {
             case PAGE.HOME:
-                return <AuthPage 
-                    setCurrentPage={setCurrentPage} 
-                    setErrorMessage={setErrorMessage} 
-                    userId={userId} 
-                    isAuthReady={isAuthReady}
-                    errorMessage={errorMessage}
-                    setCurrentUser={setCurrentUser}
-                    db={db}
-                    auth={auth}
-                />;
+                return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} errorMessage={errorMessage} db={db} auth={auth} />;
             case PAGE.COMPLIANCE_CHECK:
                 return <AuditPage 
-                    title="Bidder: Self-Compliance Check"
-                    rfqTitle="Request for Quotation (RFQ)" 
-                    bidTitle="Bid/Proposal Document" 
-                    role="BIDDER"
-                    handleAnalyze={handleAnalyze}
-                    usageLimits={usageLimits.bidderChecks}
-                    setCurrentPage={setCurrentPage}
-                    currentUser={currentUser}
-                    loading={loading}
-                    RFQFile={RFQFile}
-                    BidFile={BidFile}
-                    setRFQFile={setRFQFile}
-                    setBidFile={setBidFile}
-                    generateTestData={generateTestData} 
-                    errorMessage={errorMessage}
-                    report={report}
-                    saveReport={saveReport}
-                    saving={saving}
-                    setErrorMessage={setErrorMessage}
-                    userId={userId} 
+                    title="Bidder: Self-Compliance Check" rfqTitle="RFQ" bidTitle="Bid" role="BIDDER"
+                    handleAnalyze={handleAnalyze} usageLimits={usageLimits.bidderChecks} setCurrentPage={setCurrentPage}
+                    currentUser={currentUser} loading={loading} RFQFile={RFQFile} BidFile={BidFile}
+                    setRFQFile={setRFQFile} setBidFile={setBidFile} generateTestData={generateTestData} 
+                    errorMessage={errorMessage} report={report} saveReport={saveReport} saving={saving}
+                    setErrorMessage={setErrorMessage} userId={userId} 
                 />;
             case PAGE.ADMIN:
-                return <AdminDashboard
-                    setCurrentPage={setCurrentPage}
-                    currentUser={currentUser}
-                    reportsHistory={reportsHistory}
-                    loadReportFromHistory={loadReportFromHistory}
-                    />;
+                return <AdminDashboard setCurrentPage={setCurrentPage} currentUser={currentUser} reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} />;
             case PAGE.HISTORY:
-                return <ReportHistory 
-                    reportsHistory={reportsHistory} 
-                    loadReportFromHistory={loadReportFromHistory} 
-                    deleteReport={deleteReport}
-                    isAuthReady={isAuthReady} 
-                    userId={userId}
-                    setCurrentPage={setCurrentPage}
-                    currentUser={currentUser}
-                />;
-            default:
-                return <AuthPage 
-                    setCurrentPage={setCurrentPage} 
-                    setErrorMessage={setErrorMessage} 
-                    userId={userId} 
-                    isAuthReady={isAuthReady}
-                    errorMessage={errorMessage}
-                    setCurrentUser={setCurrentUser}
-                    db={db}
-                    auth={auth}
-                />;
+                return <ReportHistory reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} isAuthReady={isAuthReady} userId={userId} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            default: return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} errorMessage={errorMessage} db={db} auth={auth} />;
         }
     };
 
     return (
         <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100">
             <style>{`
-                /* --- FONT UPDATE: Lexend --- */
                 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&display=swap');
-
-                /* Apply Lexend to all font utility classes */
-                .font-body, .font-body *, .font-display, .font-display * { 
-                    font-family: 'Lexend', sans-serif !important; 
-                }
-                
+                .font-body, .font-body * { font-family: 'Lexend', sans-serif !important; }
                 input[type="file"] { display: block; width: 100%; }
-                
-                input[type="file"]::file-selector-button {
-                    background-color: #f59e0b; 
-                    color: #1e293b; 
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    transition: all 0.3s;
-                    font-family: 'Lexend', sans-serif; 
-                }
-                input[type="file"]::file-selector-button:hover {
-                    background-color: #fbbf24;
-                }
-
-                /* Custom Scrollbar */
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background-color: #475569; 
-                    border-radius: 3px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background-color: #1e293b;
-                }
-
-                /* PRINT STYLES */
-                @media print {
-                    body * {
-                        visibility: hidden;
-                    }
-                    #admin-print-area, #admin-print-area * {
-                        visibility: visible;
-                    }
-                    #admin-print-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        background-color: white;
-                        color: black;
-                        padding: 20px;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    * {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-                }
+                input[type="file"]::file-selector-button { background-color: #f59e0b; color: #1e293b; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
+                @media print { body * { visibility: hidden; } #admin-print-area, #admin-print-area * { visibility: visible; } #admin-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; } .no-print { display: none; } }
             `}</style>
-            
-            <div className="max-w-4xl mx-auto space-y-10">
-                {renderPage()}
-            </div>
+            <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
+            <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} />
         </div>
     );
 };
 
-// --- DetailItem for consistent user card styling ---
 const DetailItem = ({ icon: Icon, label, value }) => (
     <div className='flex items-center text-sm text-slate-300'>
         {Icon && <Icon className="w-4 h-4 mr-2 text-blue-400 flex-shrink-0"/>}
@@ -859,21 +614,11 @@ const DetailItem = ({ icon: Icon, label, value }) => (
     </div>
 );
 
-// --- UserCard sub-component for AdminDashboard ---
 const UserCard = ({ user }) => (
   <div className="p-4 bg-slate-900 rounded-xl border border-slate-700 shadow-md">
     <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
-      <p className="text-xl font-bold text-white flex items-center">
-        <User className="w-5 h-5 mr-2 text-amber-400" />
-        {user.name}
-      </p>
-      <span
-        className={`text-xs px-3 py-1 rounded-full font-semibold ${
-          user.role === 'ADMIN' ? 'bg-red-500 text-white' : 'bg-green-500 text-slate-900'
-        }`}
-      >
-        {user.role}
-      </span>
+      <p className="text-xl font-bold text-white flex items-center"><User className="w-5 h-5 mr-2 text-amber-400" />{user.name}</p>
+      <span className={`text-xs px-3 py-1 rounded-full font-semibold ${user.role === 'ADMIN' ? 'bg-red-500 text-white' : 'bg-green-500 text-slate-900'}`}>{user.role}</span>
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-4">
       <DetailItem icon={Briefcase} label="Designation" value={user.designation} />
@@ -881,898 +626,182 @@ const UserCard = ({ user }) => (
       <DetailItem icon={Mail} label="Email" value={user.email} />
       <DetailItem icon={Phone} label="Contact" value={user.phone || 'N/A'} />
     </div>
-    <p className="text-xs text-slate-500 mt-3 border-t border-slate-800 pt-2">
-      Login ID: <span className="text-slate-400 font-mono">{user.login}</span>
-    </p>
   </div>
 );
 
-// --- StatCard sub-component for AdminDashboard ---
 const StatCard = ({ icon, label, value }) => (
   <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 flex items-center space-x-4">
     <div className="flex-shrink-0">{icon}</div>
-    <div>
-      <div className="text-3xl font-extrabold text-white">{value}</div>
-      <div className="text-sm text-slate-400">{label}</div>
-    </div>
+    <div><div className="text-3xl font-extrabold text-white">{value}</div><div className="text-sm text-slate-400">{label}</div></div>
   </div>
 );
 
-// --- AdminDashboard component (MARKET INTEL ENABLED) ---
 const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory }) => {
   const [userList, setUserList] = useState([]);
-
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const snapshot = await getDocs(collection(getFirestore(), 'users'));
-        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setUserList(users);
-      } catch (err) {
-        console.error('Error fetching users:', err);
-      }
-    };
-    fetchUsers();
+    getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
 
-  // Calculate Global Stats
-  const totalAudits = reportsHistory.length; 
-  const recentReports = reportsHistory.slice(0, 15); // Show 15 most recent
-
-  // Helper to find user info for a report
-  const getUserForReport = (ownerId) => {
-    const found = userList.find(u => u.id === ownerId);
-    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
-  };
-
-  // Helper: Export Data to CSV
   const exportToCSV = (data, filename) => {
-    if (!data || !data.length) return;
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + Object.keys(data[0]).join(",") + "\n" 
-        + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // --- Data Logic for Exports ---
-  const handleVendorExport = () => {
-      // Explicitly map ONLY the fields we want for the registry to avoid 'messy' CSVs
-      const cleanVendorData = userList.map(u => ({
-          Name: u.name || '',
-          Company: u.company || '',
-          Designation: u.designation || '',
-          Email: u.email || '',
-          Phone: u.phone || '',
-          Role: u.role || 'USER'
-      }));
-      exportToCSV(cleanVendorData, 'vendor_registry.csv');
-  };
-
-  const handleMarketExport = () => {
-      const cleanMarketData = reportsHistory.map(r => ({
-          ID: r.id,
-          Project: r.projectTitle || r.rfqName,
-          "Scope of Work": r.rfqScopeSummary || 'N/A',
-          Vendor: getUserForReport(r.ownerId),
-          Industry: r.industryTag || 'Unknown',
-          Value: r.grandTotalValue || 'Unknown',
-          // --- NEW FIELDS ADDED TO CSV ---
-          Location: r.projectLocation || 'N/A',
-          Duration: r.contractDuration || 'N/A',
-          "Tech Stack": r.techKeywords || 'N/A',
-          Incumbent: r.incumbentSystem || 'N/A',
-          Regulations: r.requiredCertifications || 'N/A',
-          "Risk Identified": r.primaryRisk || 'N/A', // Renamed from Risk Score
-          Score: getCompliancePercentage(r) + '%'
-      }));
-      exportToCSV(cleanMarketData, 'market_data.csv');
+    const csvContent = "data:text/csv;charset=utf-8," + Object.keys(data[0]).join(",") + "\n" + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
+    const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
   return (
-    <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 space-y-8">
-      {/* Header */}
+    <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-        <h2 className="text-3xl font-bold text-white flex items-center">
-          <Shield className="w-8 h-8 mr-3 text-red-400" />
-          Admin Market Intelligence
-        </h2>
+        <h2 className="text-3xl font-bold text-white flex items-center"><Shield className="w-8 h-8 mr-3 text-red-400" /> Admin Market Intel</h2>
         <div className="flex space-x-3 no-print">
-            <button
-                onClick={() => window.print()}
-                className="text-sm text-slate-400 hover:text-white flex items-center bg-slate-700 px-3 py-2 rounded-lg"
-            >
-                <Printer className="w-4 h-4 mr-2" /> Print
-            </button>
-            <button
-            onClick={() => setCurrentPage('HOME')}
-            className="text-sm text-slate-400 hover:text-amber-500 flex items-center"
-            >
-            <ArrowLeft className="w-4 h-4 mr-1" /> Logout
-            </button>
+            <button onClick={() => window.print()} className="text-sm text-slate-400 hover:text-white bg-slate-700 px-3 py-2 rounded-lg"><Printer className="w-4 h-4 mr-2" /> Print</button>
+            <button onClick={() => setCurrentPage('HOME')} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
         </div>
       </div>
-
-      {/* Welcome (Hidden on Print) */}
-      <p className="text-lg text-slate-300 no-print">
-        Welcome, <span className="font-bold text-red-400">{currentUser?.name || 'Admin'}</span>.
-        Collecting real-time market data from <span className="text-white font-bold">{userList.length}</span> active vendors.
-      </p>
-
-      {/* Quick Actions (Hidden on Print) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 no-print">
-        <button
-          onClick={() => setCurrentPage('COMPLIANCE_CHECK')}
-          className="p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
-        >
-          <FileUp className="w-5 h-5 mr-2" /> Go to Compliance Check
-        </button>
-        <button
-          onClick={() => setCurrentPage('HISTORY')}
-          className="p-4 bg-slate-600 hover:bg-slate-500 rounded-xl text-white font-semibold flex items-center justify-center text-lg transition-all shadow-lg"
-        >
-          <List className="w-5 h-5 mr-2" /> View Full Report History
-        </button>
+        <button onClick={() => setCurrentPage('COMPLIANCE_CHECK')} className="p-4 bg-blue-600 rounded-xl text-white font-semibold flex justify-center"><FileUp className="w-5 h-5 mr-2" /> Compliance Check</button>
+        <button onClick={() => setCurrentPage('HISTORY')} className="p-4 bg-slate-600 rounded-xl text-white font-semibold flex justify-center"><List className="w-5 h-5 mr-2" /> View History</button>
       </div>
-
-      {/* System Stats */}
-      <div>
-        <h3 className="text-xl font-bold text-white mb-4">System & Market Stats</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard
-            icon={<HardDrive className="w-8 h-8 text-green-400" />}
-            label="Total Bids Processed"
-            value={totalAudits}
-          />
-          <StatCard
-            icon={<Users className="w-8 h-8 text-blue-400" />}
-            label="Active Vendors"
-            value={userList.length}
-          />
-          <StatCard
-            icon={<Layers className="w-8 h-8 text-amber-400" />}
-            label="Avg. Compliance"
-            value={reportsHistory.length > 0 
-                ? Math.round(reportsHistory.reduce((acc, r) => acc + (getCompliancePercentage(r)), 0) / reportsHistory.length) + "%" 
-                : "0%"}
-          />
-        </div>
-      </div>
-
-      {/* Live Market Feed (ENHANCED GOD VIEW) */}
       <div className="pt-4 border-t border-slate-700">
-        <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-white flex items-center">
-                <Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Data Feed
-            </h3>
-            <button 
-                onClick={handleMarketExport}
-                className="text-xs flex items-center bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded no-print"
-            >
-                <Download className="w-3 h-3 mr-1"/> Export CSV
-            </button>
+        <div className="flex justify-between mb-4">
+            <h3 className="text-xl font-bold text-white flex items-center"><Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Feed</h3>
+            <button onClick={() => exportToCSV(reportsHistory.map(r => ({ ...r, vendor: userList.find(u => u.id === r.ownerId)?.name })), 'market.csv')} className="text-xs bg-green-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button>
         </div>
-        
-        <div className="space-y-4">
-          {recentReports.length > 0 ? (
-            recentReports.map(item => {
-                const percentage = getCompliancePercentage(item);
-                const scoreColor = percentage >= 80 ? 'text-green-400' : percentage >= 50 ? 'text-amber-400' : 'text-red-400';
-                const projectTitleDisplay = item.projectTitle || item.rfqName; // Fallback to filename
-                
-                return (
-                  <div 
-                    key={item.id} 
-                    onClick={() => loadReportFromHistory(item)}
-                    className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 shadow-sm hover:bg-slate-900 transition cursor-pointer group"
-                  >
-                    {/* Row 1: Project & Vendor */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start mb-3">
-                        <div>
-                            <div className="flex items-center flex-wrap gap-2">
-                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-900 text-blue-200 border border-blue-700">
-                                    {item.industryTag || 'UNCLASSIFIED'}
-                                </span>
-                                <h4 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">{projectTitleDisplay}</h4>
-                            </div>
-                            <p className="text-sm text-slate-400 mt-1 flex items-center">
-                                <MapPin className="w-3 h-3 mr-1"/> {item.projectLocation || 'Unknown Location'} • <Calendar className="w-3 h-3 ml-2 mr-1"/> {item.contractDuration || 'Duration N/A'}
-                            </p>
-                            <p className="text-sm text-slate-400 mt-1 flex items-center">
-                                <User className="w-3 h-3 mr-1"/> Vendor: {getUserForReport(item.ownerId)}
-                            </p>
-                        </div>
-                        <div className="text-right mt-2 sm:mt-0">
-                            <div className={`text-xl font-bold ${scoreColor}`}>{percentage}% Compliance</div>
-                            <p className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleDateString()}</p>
-                        </div>
-                    </div>
-
-                    {/* Row 2: The "Money" & "Risk" Layer */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                        <div className="p-3 bg-slate-800 rounded-lg border border-slate-700/50">
-                            <p className="text-xs font-semibold text-green-400 mb-1 flex items-center">
-                                <DollarSign className="w-3 h-3 mr-1"/> BID VALUE & SCOPE
-                            </p>
-                            <p className="text-sm text-white font-bold">{item.grandTotalValue || 'Value Not Detected'}</p>
-                            <p className="text-xs text-slate-400 italic mt-1 line-clamp-2">"{item.rfqScopeSummary || 'No scope summary.'}"</p>
-                        </div>
-                        
-                        <div className="p-3 bg-slate-800 rounded-lg border border-slate-700/50">
-                            <p className="text-xs font-semibold text-red-400 mb-1 flex items-center">
-                                <Activity className="w-3 h-3 mr-1"/> PRIMARY RISK FACTOR
-                            </p>
-                            <p className="text-sm text-slate-200">{item.primaryRisk || 'No risk analysis available.'}</p>
-                        </div>
-                    </div>
-                  </div>
-                );
-            })
-          ) : (
-            <p className="text-slate-400 italic text-sm p-4 text-center border border-dashed border-slate-700 rounded-xl">
-                No market data collected yet. Run a new audit to populate the dataset.
-            </p>
-          )}
-        </div>
+        <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
+            <div key={item.id} onClick={() => loadReportFromHistory(item)} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-900">
+                <div className="flex justify-between mb-2"><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName}</h4><span className="text-slate-500 text-xs">{new Date(item.timestamp).toLocaleDateString()}</span></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <p className="text-xs text-green-400 font-bold"><DollarSign className="w-3 h-3 inline"/> {item.grandTotalValue}</p>
+                    <p className="text-xs text-red-400 font-bold"><Activity className="w-3 h-3 inline"/> {item.primaryRisk}</p>
+                </div>
+            </div>
+        ))}</div>
       </div>
-      
-      {/* Registered Users (FIXED: Table Layout) */}
       <div className="pt-4 border-t border-slate-700">
-        <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-white flex items-center">
-                <Users className="w-5 h-5 mr-2 text-blue-400" /> Vendor Registry ({userList.length})
-            </h3>
-            <button 
-                onClick={handleVendorExport}
-                className="text-xs flex items-center bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded no-print"
-            >
-                <Download className="w-3 h-3 mr-1"/> Export CSV
-            </button>
-        </div>
-        
-        {/* New Table Structure for Registry */}
-        <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900">
-            <table className="w-full text-left text-sm text-slate-400">
-                <thead className="bg-slate-800 text-slate-200 uppercase font-bold sticky top-0">
-                    <tr>
-                        <th className="px-4 py-3">Name</th>
-                        <th className="px-4 py-3">Company</th>
-                        <th className="px-4 py-3">Designation</th>
-                        <th className="px-4 py-3">Email</th>
-                        <th className="px-4 py-3">Phone</th>
-                        <th className="px-4 py-3 text-right">Role</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                    {userList.map((user, index) => (
-                        <tr key={index} className="hover:bg-slate-800/50 transition">
-                            <td className="px-4 py-3 font-medium text-white">{user.name}</td>
-                            <td className="px-4 py-3">{user.company}</td>
-                            <td className="px-4 py-3">{user.designation}</td>
-                            <td className="px-4 py-3">{user.email}</td>
-                            <td className="px-4 py-3">{user.phone || 'N/A'}</td>
-                            <td className="px-4 py-3 text-right">
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${user.role === 'ADMIN' ? 'bg-red-900 text-red-200' : 'bg-green-900 text-green-200'}`}>
-                                    {user.role}
-                                </span>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+         <h3 className="text-xl font-bold text-white mb-4"><Users className="w-5 h-5 mr-2 text-blue-400" /> Vendor Registry</h3>
+         <div className="max-h-64 overflow-y-auto bg-slate-900 rounded-xl border border-slate-700 p-4 space-y-4">
+            {userList.map((user, i) => <UserCard key={i} user={user} />)}
+         </div>
       </div>
     </div>
   );
 };
 
-// --- Common Audit Component ---
-const AuditPage = ({ 
-    title, rfqTitle, bidTitle, role, handleAnalyze, usageLimits, 
-    setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, 
-    generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId
-}) => {
-
-    const handleSave = () => {
-        saveReport(role);
-    };
-    
-    const handleBack = () => {
-        if (currentUser && currentUser.role === 'ADMIN') {
-            setCurrentPage(PAGE.ADMIN); 
-        } else {
-            setCurrentPage(PAGE.HOME); 
-        }
-    };
-
-    const HeaderMessage = () => {
-        if (currentUser && currentUser.role === 'ADMIN') {
-            return (
-                <p className="text-green-400 text-sm font-semibold">
-                    **Welcome, {currentUser.name}! | ADMIN VIEW**
-                </p>
-            );
-        }
-        return (
-            <p className="text-green-400 text-sm font-semibold">
-                **Uninterrupted Mode Active.**
-            </p>
-        );
-    };
-
+const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
     return (
         <>
-            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700">
+            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
                     <h2 className="text-2xl font-bold text-white">{title}</h2>
-                    <button
-                        onClick={handleBack}
-                        className="text-sm text-slate-400 hover:text-amber-500 flex items-center"
-                    >
-                        <ArrowLeft className="w-4 h-4 mr-1"/> 
-                        {currentUser && currentUser.role === 'ADMIN' ? 'Back to Admin Dashboard' : 'Logout'}
-                    </button>
-                </div>
-
-                <div className="text-center mb-6 p-3 rounded-xl bg-green-900/40 border border-green-700">
-                    <HeaderMessage />
-                </div>
-                
-                <button
-                    onClick={generateTestData}
-                    disabled={loading}
-                    className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30 transition-all shadow-md shadow-teal-900/50"
-                >
-                    <Zap className="h-5 w-5 mr-2" />
-                    LOAD DEMO DOCUMENTS
-                </button>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <FileUploader
-                        title={rfqTitle}
-                        file={RFQFile}
-                        setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)}
-                        color="blue"
-                        requiredText="Defines the mandatory requirements. Accepts: .txt, .pdf, .docx"
-                    />
-                    <FileUploader
-                        title={bidTitle}
-                        file={BidFile}
-                        setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)}
-                        color="green"
-                        requiredText="The document responding to the RFQ. Accepts: .txt, .pdf, .docx"
-                    />
-                </div>
-                
-                {errorMessage && (
-                    <div className={`mt-6 p-4 ${errorMessage.includes('Mock documents loaded') ? 'bg-blue-900/40 text-blue-300 border-blue-700' : 'bg-red-900/40 text-red-300 border-red-700'} border rounded-xl flex items-center`}>
-                        <AlertTriangle className="w-5 h-5 mr-3"/>
-                        <p className="text-sm font-medium">{errorMessage}</p>
+                    <div className="text-right">
+                        <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>
+                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500">Logout</button>
                     </div>
-                )}
-                
-                <button
-                    onClick={() => handleAnalyze(role)}
-                    disabled={loading || !RFQFile || !BidFile}
-                    className={`mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 transition-all shadow-xl 
-                        bg-amber-500 hover:bg-amber-400 shadow-amber-900/50 disabled:opacity-50
-                    `}
-                >
-                    {loading ? (
-                        <Loader2 className="animate-spin h-6 w-6 mr-3" />
-                    ) : (
-                        <Send className="h-6 w-6 mr-3" />
-                    )}
-                    {loading ? 'ANALYZING COMPLEX DOCUMENTS...' : 'RUN COMPLIANCE AUDIT'}
+                </div>
+                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
+                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
+                </div>
+                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
+                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
+                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
                 </button>
-
-                {report && userId && ( 
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50 transition-all"
-                    >
-                        <Save className="h-5 w-5 mr-2" />
-                        {saving ? 'SAVING...' : 'SAVE REPORT TO HISTORY'}
-                    </button>
-                )}
-                
-                {(report || userId) && ( 
-                    <button
-                        onClick={() => setCurrentPage(PAGE.HISTORY)}
-                        className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700 transition-all"
-                    >
-                        <List className="h-5 w-5 mr-2" />
-                        VIEW ALL SAVED REPORTS
-                    </button>
-                )}
+                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
+                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
             </div>
-
             {report && <ComplianceReport report={report} />}
         </>
     );
 };
 
-// FileUploader Component
 const FileUploader = ({ title, file, setFile, color, requiredText }) => (
     <div className={`p-6 border-2 border-dashed border-${color}-600/50 rounded-2xl bg-slate-900/50 space-y-3`}>
-        <h3 className={`text-lg font-bold text-${color}-400 flex items-center`}>
-            <FileUp className={`w-6 h-6 mr-2 text-${color}-500`} /> {title}
-        </h3>
+        <h3 className={`text-lg font-bold text-${color}-400 flex items-center`}><FileUp className={`w-6 h-6 mr-2 text-${color}-500`} /> {title}</h3>
         <p className="text-sm text-slate-400">{requiredText}</p>
-        <input
-            type="file"
-            accept=".txt,.pdf,.docx" 
-            onChange={setFile}
-            className="w-full text-base text-slate-300 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold"
-        />
-        {file && (
-            <p className="text-sm font-medium text-green-400 flex items-center">
-                <CheckCircle className="w-4 h-4 mr-1 text-green-500" /> Loaded: {file.name}
-            </p>
-        )}
+        <input type="file" accept=".txt,.pdf,.docx" onChange={setFile} className="w-full text-base text-slate-300"/>
+        {file && <p className="text-sm font-medium text-green-400 flex items-center"><CheckCircle className="w-4 h-4 mr-1 text-green-500" /> {file.name}</p>}
     </div>
 );
 
-// ComplianceReport Component
 const ComplianceReport = ({ report }) => {
     const findings = report.findings || []; 
-    
-    // --- Data Calculation ---
     const overallPercentage = getCompliancePercentage(report);
-    const totalRequirements = findings.length;
-    
-    const counts = findings.reduce((acc, item) => {
-        const flag = item.flag && ['COMPLIANT', 'PARTIAL', 'NON-COMPLIANT'].includes(item.flag) ? item.flag : 'NON-COMPLIANT';
-        acc[flag] = (acc[flag] || 0) + 1;
-        return acc;
-    }, { 'COMPLIANT': 0, 'PARTIAL': 0, 'NON-COMPLIANT': 0 });
+    const counts = findings.reduce((acc, item) => { const flag = item.flag || 'NON-COMPLIANT'; acc[flag] = (acc[flag] || 0) + 1; return acc; }, { 'COMPLIANT': 0, 'PARTIAL': 0, 'NON-COMPLIANT': 0 });
+    const getWidth = (flag) => findings.length === 0 ? '0%' : `${(counts[flag] / findings.length) * 100}%`;
 
-    const getWidth = (flag) => {
-        if (totalRequirements === 0) return '0%';
-        return `${(counts[flag] / totalRequirements) * 100}%`;
-    };
-
-    const getFlagColor = (flag) => {
-        switch (flag) {
-            case 'COMPLIANT': return 'bg-green-700/30 text-green-300 border-green-500/50';
-            case 'PARTIAL': return 'bg-amber-700/30 text-amber-300 border-amber-500/50';
-            case 'NON-COMPLIANT': return 'bg-red-700/30 text-red-300 border-red-500/50';
-            default: return 'bg-gray-700/30 text-gray-300 border-gray-500/50';
-        }
-    };
-    
-    const getCategoryColor = (category) => {
-        switch (category) {
-            case 'TECHNICAL': return 'bg-purple-700 text-purple-200';
-            case 'FINANCIAL': return 'bg-green-700 text-green-200';
-            case 'LEGAL': return 'bg-red-700 text-red-200';
-            case 'TIMELINE': return 'bg-blue-700 text-blue-200';
-            case 'REPORTING': return 'bg-yellow-700 text-yellow-200';
-            case 'ADMINISTRATIVE': return 'bg-indigo-700 text-indigo-200';
-            default: return 'bg-slate-700 text-slate-400';
-        }
-    };
-    
     return (
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 mt-8">
-            <h2 className="text-3xl font-extrabold text-white flex items-center mb-6 border-b border-slate-700 pb-4">
-                <List className="w-6 h-6 mr-3 text-amber-400"/> Comprehensive Compliance Report
-            </h2>
-
-            {/* --- ZONE 1: AI Executive Summary (The Writer) --- */}
+        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 mt-8">
+            <h2 className="text-3xl font-extrabold text-white flex items-center mb-6 border-b border-slate-700 pb-4"><List className="w-6 h-6 mr-3 text-amber-400"/> Compliance Report</h2>
             {report.generatedExecutiveSummary && (
                 <div className="mb-8 p-6 bg-gradient-to-r from-blue-900/40 to-slate-800 rounded-xl border border-blue-500/30">
-                    <div className="flex justify-between items-start mb-3">
-                        <h3 className="text-xl font-bold text-blue-200 flex items-center">
-                            <Award className="w-5 h-5 mr-2 text-yellow-400"/> AI-Suggested Executive Summary
-                        </h3>
-                        <button 
-                            onClick={() => navigator.clipboard.writeText(report.generatedExecutiveSummary)}
-                            className="text-xs flex items-center bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded transition"
-                        >
-                            <Copy className="w-3 h-3 mr-1"/> Copy Text
-                        </button>
-                    </div>
-                    <p className="text-slate-300 italic leading-relaxed border-l-4 border-blue-500 pl-4">
-                        "{report.generatedExecutiveSummary}"
-                    </p>
-                    <p className="text-xs text-slate-500 mt-2">💡 Tip: Use this paragraph to start your proposal.</p>
+                    <h3 className="text-xl font-bold text-blue-200 mb-3 flex items-center"><Award className="w-5 h-5 mr-2 text-yellow-400"/> AI-Suggested Executive Summary</h3>
+                    <p className="text-slate-300 italic leading-relaxed border-l-4 border-blue-500 pl-4">"{report.generatedExecutiveSummary}"</p>
                 </div>
             )}
-
-            {/* --- ZONE 2: Scoreboard & Persuasion (The Coach) --- */}
             <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Compliance Score */}
-                <div className="p-5 bg-slate-700/50 rounded-xl border border-amber-600/50 shadow-inner flex flex-col items-center justify-center">
-                    <p className="text-sm font-semibold text-white mb-1 flex items-center"><BarChart2 className="w-4 h-4 mr-2"/> Compliance Score</p>
-                    <div className="text-5xl font-extrabold text-amber-400 tracking-wide">{overallPercentage}%</div>
-                    
-                    {/* Progress Bar */}
-                    <div className="w-full h-3 bg-slate-900 rounded-full flex overflow-hidden mt-4">
-                        <div style={{ width: getWidth('COMPLIANT') }} className="bg-green-500"></div>
-                        <div style={{ width: getWidth('PARTIAL') }} className="bg-amber-500"></div>
-                        <div style={{ width: getWidth('NON-COMPLIANT') }} className="bg-red-500"></div>
-                    </div>
-                    <div className="flex justify-between w-full text-xs text-slate-400 mt-2 px-1">
-                        <span>Pass</span><span>Partial</span><span>Fail</span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-3 text-center">View detailed score breakdown by requirement below.</p>
+                <div className="p-5 bg-slate-700/50 rounded-xl border border-amber-600/50 text-center">
+                    <p className="text-sm font-semibold text-white mb-1"><BarChart2 className="w-4 h-4 inline mr-2"/> Compliance Score</p>
+                    <div className="text-5xl font-extrabold text-amber-400">{overallPercentage}%</div>
+                    <div className="w-full h-3 bg-slate-900 rounded-full flex overflow-hidden mt-4"><div style={{ width: getWidth('COMPLIANT') }} className="bg-green-500"></div><div style={{ width: getWidth('PARTIAL') }} className="bg-amber-500"></div><div style={{ width: getWidth('NON-COMPLIANT') }} className="bg-red-500"></div></div>
+                    <p className="text-xs text-slate-400 mt-3">View detailed breakdown below.</p>
                 </div>
-
-                {/* Persuasion Score */}
                 {report.persuasionScore !== undefined && (
-                    <div className="p-5 bg-slate-700/50 rounded-xl border border-purple-600/50 shadow-inner flex flex-col items-center justify-center relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-2 opacity-10"><Activity className="w-24 h-24 text-purple-400"/></div>
-                        <p className="text-sm font-semibold text-white mb-1 flex items-center"><Activity className="w-4 h-4 mr-2 text-purple-400"/> Persuasion Score</p>
-                        <div className="text-5xl font-extrabold text-purple-300 tracking-wide">{report.persuasionScore}/100</div>
-                        <div className="mt-3 flex flex-wrap justify-center gap-2">
-                            <span className="px-3 py-1 rounded-full bg-purple-900/50 border border-purple-500 text-xs text-purple-200 font-bold uppercase">
-                                Tone: {report.toneAnalysis || 'Neutral'}
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-3 text-center">Based on confidence, active voice, and clarity.</p>
-                        {report.weakWords && report.weakWords.length > 0 && (
-                            <p className="text-xs text-slate-400 mt-1 text-center">
-                                ⚠️ Weak words detected: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
-                            </p>
-                        )}
+                    <div className="p-5 bg-slate-700/50 rounded-xl border border-purple-600/50 text-center relative overflow-hidden">
+                        <p className="text-sm font-semibold text-white mb-1"><Activity className="w-4 h-4 inline mr-2 text-purple-400"/> Persuasion Score</p>
+                        <div className="text-5xl font-extrabold text-purple-300">{report.persuasionScore}/100</div>
+                        <p className="text-xs text-slate-400 mt-3">Based on confidence, active voice, and clarity.</p>
                     </div>
                 )}
             </div>
-
-            {/* --- ZONE 3: The War Room (Win/Lose & Risks) --- */}
             {report.procurementVerdict && (
                 <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Winning Proposition Metrics */}
                     <div className="p-5 bg-green-900/20 rounded-xl border border-green-800">
-                        <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center"><ThumbsUp className="w-5 h-5 mr-2"/> Proposal Winning Proposition</h4>
-                        <ul className="space-y-2">
-                            {report.procurementVerdict.winningFactors?.map((factor, i) => (
-                                <li key={i} className="flex items-start text-sm text-green-200">
-                                    <CheckCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0"/> {factor}
-                                </li>
-                            ))}
-                        </ul>
+                        <h4 className="text-lg font-bold text-green-400 mb-3"><ThumbsUp className="w-5 h-5 inline mr-2"/> Proposal Winning Proposition</h4>
+                        <ul className="space-y-2">{report.procurementVerdict.winningFactors?.map((f, i) => <li key={i} className="flex text-sm text-green-200"><CheckCircle className="w-4 h-4 mr-2"/> {f}</li>)}</ul>
                     </div>
-                    {/* Non-Winning Proposition Metrics */}
                     <div className="p-5 bg-red-900/20 rounded-xl border border-red-800">
-                        <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center"><ThumbsDown className="w-5 h-5 mr-2"/> Proposal Potential Flaws</h4>
-                        <ul className="space-y-2">
-                            {report.procurementVerdict.losingFactors?.map((factor, i) => (
-                                <li key={i} className="flex items-start text-sm text-red-200">
-                                    <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0"/> {factor}
-                                </li>
-                            ))}
-                        </ul>
+                        <h4 className="text-lg font-bold text-red-400 mb-3"><ThumbsDown className="w-5 h-5 inline mr-2"/> Proposal Potential Flaws</h4>
+                        <ul className="space-y-2">{report.procurementVerdict.losingFactors?.map((f, i) => <li key={i} className="flex text-sm text-red-200"><AlertTriangle className="w-4 h-4 mr-2"/> {f}</li>)}</ul>
                     </div>
                 </div>
             )}
-
-            {/* Legal Risk Alert */}
-            {report.legalRiskAlerts && report.legalRiskAlerts.length > 0 && (
-                <div className="mb-10 p-5 bg-red-950/50 rounded-xl border border-red-600 flex items-start">
-                    <Gavel className="w-8 h-8 text-red-500 mr-4 flex-shrink-0 mt-1"/>
-                    <div>
-                        <h4 className="text-lg font-bold text-red-400 mb-1">Legal Risk Detected</h4>
-                        <p className="text-sm text-red-200 mb-2">You accepted the following dangerous clauses without pushback:</p>
-                        <ul className="list-disc list-inside text-sm text-red-300 space-y-1">
-                            {report.legalRiskAlerts.map((risk, i) => <li key={i}>{risk}</li>)}
-                        </ul>
-                    </div>
+            {report.legalRiskAlerts?.length > 0 && (
+                <div className="mb-10 p-5 bg-red-950/50 rounded-xl border border-red-600">
+                    <h4 className="text-lg font-bold text-red-400 mb-1"><Gavel className="w-6 h-6 inline mr-2"/> Legal Risk Detected</h4>
+                    <ul className="list-disc list-inside text-sm text-red-300">{report.legalRiskAlerts.map((r, i) => <li key={i}>{r}</li>)}</ul>
                 </div>
             )}
-
-            {/* --- Detailed Findings Matrix --- */}
-            <h3 className="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-3">
-                Detailed Findings ({totalRequirements} Requirements)
-            </h3>
+            <h3 className="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-3">Detailed Findings</h3>
             <div className="space-y-8">
                 {findings.map((item, index) => (
                     <div key={index} className="p-6 border border-slate-700 rounded-xl shadow-md space-y-3 bg-slate-800 hover:bg-slate-700/50 transition">
-                        <div className="flex flex-wrap justify-between items-start">
-                            <h3 className="text-xl font-bold text-white mb-2 sm:mb-0">
-                                Requirement #{index + 1}
-                            </h3>
-                            {/* Tags Group */}
-                            <div className="flex flex-col sm:flex-row items-end sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                                {/* Category Tag */}
-                                {item.category && (
-                                    <div className={`px-2 py-0.5 text-xs font-bold rounded-full ${getCategoryColor(item.category)} flex items-center`}>
-                                        <Tag className="w-3 h-3 mr-1"/> {item.category}
-                                    </div>
-                                )}
-                                {/* Compliance Flag */}
-                                <div className={`px-4 py-1 text-sm font-semibold rounded-full border ${getFlagColor(item.flag)}`}>
-                                    {item.flag} ({item.complianceScore})
-                                </div>
-                            </div>
+                        <div className="flex justify-between items-start">
+                            <h3 className="text-xl font-bold text-white">#{index + 1}</h3>
+                            <div className={`px-4 py-1 text-sm font-semibold rounded-full border ${item.flag === 'COMPLIANT' ? 'bg-green-700/30 text-green-300 border-green-500' : item.flag === 'PARTIAL' ? 'bg-amber-700/30 text-amber-300 border-amber-500' : 'bg-red-700/30 text-red-300 border-red-500'}`}>{item.flag} ({item.complianceScore})</div>
                         </div>
-
                         <p className="font-semibold text-slate-300 mt-2">RFQ Requirement Extracted:</p>
-                        {/* FIX: Added fallback text if extracted requirement is empty */}
-                        <p className="p-4 bg-slate-900/80 text-slate-200 rounded-lg border border-slate-700 italic text-sm leading-relaxed">
-                            {item.requirementFromRFQ || "Text not extracted by AI"}
-                        </p>
-
+                        <p className="p-4 bg-slate-900/80 text-slate-200 rounded-lg border border-slate-700 italic text-sm">{item.requirementFromRFQ || "Text not extracted by AI"}</p>
                         <p className="font-semibold text-slate-300 mt-4">Bidder's Response Summary:</p>
-                        <p className="text-slate-400 leading-relaxed text-sm">
-                            {item.bidResponseSummary}
-                        </p>
-                        
-                        {item.negotiationStance && (
-                            <div className="mt-4 p-4 bg-blue-900/40 border border-blue-700 rounded-xl space-y-2">
-                                <p className="font-semibold text-blue-300 flex items-center">
-                                    <Briefcase className="w-4 h-4 mr-2"/> Recommended Negotiation Stance:
-                                </p>
-                                <p className="text-blue-200 leading-relaxed text-sm">
-                                    {item.negotiationStance}
-                                </p>
-                            </div>
-                        )}
+                        <p className="text-slate-400 text-sm">{item.bidResponseSummary}</p>
+                        {item.negotiationStance && <div className="mt-4 p-4 bg-blue-900/40 border border-blue-700 rounded-xl"><p className="font-semibold text-blue-300">Recommended Negotiation Stance:</p><p className="text-blue-200 text-sm">{item.negotiationStance}</p></div>}
                     </div>
                 ))}
             </div>
-
-            {/* --- ZONE 4: Submission Checklist (The Project Manager) --- */}
-            {report.submissionChecklist && report.submissionChecklist.length > 0 && (
+            {report.submissionChecklist?.length > 0 && (
                 <div className="mt-12 p-6 bg-slate-700/30 rounded-xl border border-slate-600 border-dashed">
-                    <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-                        <Paperclip className="w-5 h-5 mr-2 text-slate-400"/> Identified Required Attachment/Appendices From RFQ
-                    </h3>
+                    <h3 className="text-lg font-bold text-white mb-4"><Paperclip className="w-5 h-5 inline mr-2 text-slate-400"/> Identified Required Attachment/Appendices From RFQ</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {report.submissionChecklist.map((artifact, i) => (
                             <div key={i} className="flex items-center p-3 bg-slate-800 rounded-lg border border-slate-700">
-                                {/* Replaced Checkbox with static Icon for professional reminder look */}
                                 <FileText className="w-4 h-4 text-blue-400 mr-3 flex-shrink-0"/>
                                 <span className="text-sm text-slate-300">{artifact}</span>
                             </div>
                         ))}
                     </div>
-                    <p className="text-xs text-slate-500 mt-4 text-center">
-                        * Ensure all above documents are attached to your final PDF before submission.
-                    </p>
                 </div>
             )}
         </div>
     );
 }
 
-// Simple component for metrics below the chart
-const MetricPill = ({ label, count, color }) => (
-    <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
-        <div className={`text-xl font-bold ${color}`}>{count}</div>
-        <div className="text-slate-400 text-xs mt-1">{label}</div>
-    </div>
-);
-
-// --- Compliance Ranking Component ---
-const ComplianceRanking = ({ reportsHistory, loadReportFromHistory, deleteReport, currentUser }) => { 
-    if (reportsHistory.length === 0) return null;
-
-    // 1. Group by RFQ Title
-    const groupedReports = reportsHistory.reduce((acc, report) => {
-        const rfqName = report.rfqName;
-        const percentage = getCompliancePercentage(report); 
-        const reportWithScore = { ...report, percentage }; 
-
-        if (!acc[rfqName]) {
-            acc[rfqName] = { 
-                allReports: [],
-                count: 0
-            };
-        }
-
-        acc[rfqName].allReports.push(reportWithScore);
-        acc[rfqName].count += 1;
-        
-        return acc;
-    }, {});
-    
-    // Convert to an array for rendering and filtering
-    const rankedProjects = Object.entries(groupedReports)
-        .filter(([_, data]) => data.allReports.length >= 1) 
-        .sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
-
-
-    // 2. Function to sort and assign ranks
-    const getRankedReports = (reports) => {
-        // Sort by Percentage (High to Low), then Timestamp (New to Old)
-        const sortedReports = reports.sort((a, b) => {
-            if (b.percentage !== a.percentage) {
-                return b.percentage - a.percentage; 
-            }
-            return b.timestamp - a.timestamp; 
-        });
-        
-        // Simple ranking based on sort order
-        return sortedReports.map((report, index) => ({
-            ...report,
-            rank: index + 1
-        }));
-    };
-
-
-    return (
-        <div className="mt-8">
-            <h2 className="text-xl font-bold text-white flex items-center mb-4 border-b border-slate-700 pb-2">
-                <Layers className="w-5 h-5 mr-2 text-blue-400"/> Compliance Ranking by RFQ
-            </h2>
-            <p className="text-sm text-slate-400 mb-6">
-                Reports are grouped by Project (RFQ) and ranked by Compliance Score (Highest First).
-            </p>
-            
-            <div className="space-y-6">
-                {rankedProjects.map(([rfqName, data]) => {
-                    const rankedReports = getRankedReports(data.allReports);
-
-                    return (
-                        <div key={rfqName} className="p-5 bg-slate-700/50 rounded-xl border border-slate-600 shadow-lg">
-                            <h3 className="text-lg font-extrabold text-amber-400 mb-4 border-b border-slate-600 pb-2">
-                                {rfqName} <span className="text-sm font-normal text-slate-400">({data.count} Revisions)</span>
-                            </h3>
-                            <div className="space-y-3">
-                                {rankedReports.map((report) => (
-                                    <div 
-                                        key={report.id} 
-                                        className={`p-3 rounded-lg border border-slate-600 bg-slate-900/50 space-y-2 flex justify-between items-center transition hover:bg-slate-700/50`}
-                                    >
-                                        <div className='flex items-center min-w-0 cursor-pointer' onClick={() => loadReportFromHistory(report)}>
-                                            <div className={`text-xl font-extrabold w-8 flex-shrink-0 ${report.rank === 1 ? 'text-green-400' : 'text-slate-500'}`}>
-                                                #{report.rank}
-                                            </div>
-                                            <div className='ml-3 min-w-0'>
-                                                <p className="text-sm font-medium text-white truncate" title={report.bidName}>
-                                                    {report.bidName}
-                                                </p>
-                                                <p className="text-xs text-slate-400">
-                                                    Audited on: {new Date(report.timestamp).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="flex-shrink-0 text-right space-y-1 flex items-center">
-                                            {/* Delete Button for Ranking View - ONLY FOR ADMIN */}
-                                            {currentUser && currentUser.role === 'ADMIN' && (
-                                                <button
-                                                    onClick={() => deleteReport(report.id, report.rfqName, report.bidName)}
-                                                    className="mr-2 p-1 rounded bg-red-600 hover:bg-red-500 transition shadow-md"
-                                                    title="Click to Delete Report Permanently"
-                                                >
-                                                    <Trash2 className="w-4 h-4 text-white"/>
-                                                </button>
-                                            )}
-                                            <span className={`px-2 py-0.5 rounded text-sm font-bold bg-blue-600 text-slate-900 block`}>
-                                                {report.percentage}%
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-
-// History Component
-const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, userId, setCurrentPage, currentUser, deleteReport }) => { 
-    
-    const handleBack = () => {
-        if (currentUser && currentUser.role === 'ADMIN') {
-            setCurrentPage(PAGE.ADMIN); 
-        } else {
-            setCurrentPage(PAGE.COMPLIANCE_CHECK); 
-        }
-    };
-    
-    if (!isAuthReady || !userId) {
-        return (
-            <div className="bg-slate-800 p-8 rounded-2xl border border-red-700 text-center text-red-400">
-                <AlertTriangle className="h-5 w-5 inline-block mr-2" />
-                History access is currently disabled due to authentication status.
-                <button
-                    onClick={() => setCurrentPage(PAGE.HOME)}
-                    className="mt-4 text-sm text-slate-400 hover:text-white flex items-center mx-auto"
-                >
-                    <ArrowLeft className="w-4 h-4 mr-1"/> Back to Login
-                </button>
-            </div>
-        );
-    }
-
-    return (
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700">
-            <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
-                <h2 className="text-xl font-bold text-white flex items-center">
-                    <Clock className="w-5 h-5 mr-2 text-amber-500"/> Saved Report History ({reportsHistory.length})
-                </h2 >
-                <button
-                    onClick={handleBack}
-                    className="text-sm text-slate-400 hover:text-amber-500 flex items-center"
-                >
-                    <ArrowLeft className="w-4 h-4 mr-1"/> Back to Dashboard
-                </button>
-            </div>
-            
-            <ComplianceRanking 
-                reportsHistory={reportsHistory} 
-                loadReportFromHistory={loadReportFromHistory}
-                deleteReport={deleteReport} 
-                currentUser={currentUser} 
-            />
-
-            <h3 className="text-lg font-bold text-white mt-8 mb-4 border-b border-slate-700 pb-2">
-                All Reports
-            </h3>
-
-            {reportsHistory.length === 0 ? (
-                <p className="text-slate-400 italic">No saved reports found. Run an audit and click 'Save Report' to populate history.</p>
-            ) : (
-                <div className="space-y-4">
-                    {reportsHistory.map(item => {
-                        const date = new Date(item.timestamp);
-                        const percentage = getCompliancePercentage(item);
-                        const scoreColor = percentage >= 80 ? 'text-green-400' : percentage >= 50 ? 'text-amber-400' : 'text-red-400';
-                        const roleLabel = item.role === 'BIDDER' ? 'Self-Check' : 'Initiator Audit';
-
-                        return (
-                            <div key={item.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-slate-700/50 rounded-xl border border-slate-700 transition hover:bg-slate-700/80">
-                                <div className="space-y-1 sm:space-y-0 sm:mr-4">
-                                    <p className="text-sm font-semibold text-white">
-                                        <span className={`px-2 py-0.5 rounded-full ${scoreColor} border border-current mr-2 text-xs font-mono`}>{percentage}%</span>
-                                        {item.rfqName} vs {item.bidName}
-                                    </p>
-                                    <p className="text-xs text-slate-500 italic">
-                                        Mode: {roleLabel}
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                        Audited on: {date.toLocaleDateString()} {date.toLocaleTimeString()}
-                                    </p>
-                                </div>
-                                <div className='flex items-center mt-3 sm:mt-0 space-x-2'>
-                                    {/* Load Button */}
-                                    <button
-                                        onClick={() => loadReportFromHistory(item)}
-                                        className="flex items-center px-4 py-2 text-xs font-semibold rounded-lg text-slate-900 bg-amber-500 hover:bg-amber-400 transition"
-                                    >
-                                        <ArrowLeft className="w-3 h-3 mr-1 rotate-180"/> Load
-                                    </button>
-                                    {/* Delete Button - ONLY RENDERED FOR ADMIN */}
-                                    {currentUser && currentUser.role === 'ADMIN' && (
-                                        <button
-                                            onClick={() => deleteReport(item.id, item.rfqName, item.bidName)}
-                                            className="flex items-center px-4 py-2 text-xs font-semibold rounded-lg text-white bg-red-600 hover:bg-red-500 transition shadow-md"
-                                            title="Click to Delete Report Permanently"
-                                        >
-                                            <Trash2 className="w-3 h-3 mr-1"/> Delete
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
-    );
-};
-
-
-// --- Top-level export component using the ErrorBoundary ---
-function TopLevelApp() {
-    return (
-        <ErrorBoundary>
-            <App />
-        </ErrorBoundary>
-    );
-}
-
+function TopLevelApp() { return <ErrorBoundary><App /></ErrorBoundary>; }
 export default TopLevelApp;
