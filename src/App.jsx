@@ -32,9 +32,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
-// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
 const API_URL = '/api/analyze'; 
-
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
 const MAX_FREE_AUDITS = 3; // HARD LIMIT for Non-Admins
 
@@ -45,7 +43,7 @@ const PAGE = {
     HISTORY: 'HISTORY' 
 };
 
-// --- UPDATED JSON Schema (Refined for Professional Output) ---
+// --- JSON SCHEMA ---
 const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
@@ -133,15 +131,9 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 };
 
 // --- FIRESTORE UTILITIES ---
-const getUsageDocRef = (db, userId) => {
-    return doc(db, `users/${userId}/usage_limits`, 'main_tracker');
-};
+const getUsageDocRef = (db, userId) => doc(db, `users/${userId}/usage_limits`, 'main_tracker');
+const getReportsCollectionRef = (db, userId) => collection(db, `users/${userId}/compliance_reports`);
 
-const getReportsCollectionRef = (db, userId) => {
-    return collection(db, `users/${userId}/compliance_reports`);
-};
-
-// --- Calculation Utility ---
 const getCompliancePercentage = (report) => {
     const findings = report.findings || []; 
     const totalScore = findings.reduce((sum, item) => sum + (item.complianceScore || 0), 0);
@@ -154,7 +146,6 @@ const processFile = (file) => {
     return new Promise(async (resolve, reject) => {
         const fileExtension = file.name.split('.').pop().toLowerCase();
         const reader = new FileReader();
-
         if (fileExtension === 'txt') {
             reader.onload = (event) => resolve(event.target.result);
             reader.onerror = reject;
@@ -210,7 +201,7 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-// --- Components ---
+// --- SHARED UI COMPONENTS ---
 const handleFileChange = (e, setFile, setErrorMessage) => {
     if (e.target.files.length > 0) {
         setFile(e.target.files[0]);
@@ -234,7 +225,6 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
     </div>
 );
 
-// --- Paywall Modal ---
 const PaywallModal = ({ show, onClose }) => {
     if (!show) return null;
     return (
@@ -260,384 +250,6 @@ const PaywallModal = ({ show, onClose }) => {
                     Maybe Later (Return to Home)
                 </button>
             </div>
-        </div>
-    );
-};
-
-const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
-    const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
-    const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const handleRegChange = (e) => setRegForm({ ...regForm, [e.target.name]: e.target.value });
-    const handleLoginChange = (e) => setLoginForm({ ...loginForm, [e.target.name]: e.target.value });
-
-    const handleRegister = async (e) => {
-        e.preventDefault();
-        setErrorMessage(null);
-        setIsSubmitting(true);
-        try {
-            const userCred = await createUserWithEmailAndPassword(auth, regForm.email, regForm.password);
-            await setDoc(doc(db, 'users', userCred.user.uid), {
-                name: regForm.name,
-                designation: regForm.designation,
-                company: regForm.company,
-                email: regForm.email,
-                phone: regForm.phone,
-                role: 'USER',
-                createdAt: Date.now()
-            });
-            setLoginForm({ email: regForm.email, password: regForm.password });
-            setErrorMessage('SUCCESS: Registration complete! Credentials autofilled. Please Sign In below.');
-        } catch (err) {
-            console.error('Registration error', err);
-            setErrorMessage(err.message || 'Registration failed.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        setErrorMessage(null);
-        setIsSubmitting(true);
-        try {
-            await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            setCurrentPage(PAGE.COMPLIANCE_CHECK);
-        } catch (err) {
-            console.error('Login error', err);
-            setErrorMessage(err.message || 'Login failed.');
-            setIsSubmitting(false);
-        }
-    };
-
-    const isSuccess = errorMessage && errorMessage.includes('SUCCESS');
-
-    return (
-        <div className="p-8 bg-slate-800 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 mt-12 mb-12">
-            <h2 className="text-3xl font-extrabold text-white text-center">Welcome to SmartBids</h2>
-            <p className="text-lg font-medium text-blue-400 text-center mb-6">AI-Driven Bid Compliance Audit: Smarter Bids, Every Time!</p>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="p-6 bg-slate-700/50 rounded-xl border border-blue-500/50 shadow-inner space-y-4">
-                    <h3 className="text-2xl font-bold text-blue-300 flex items-center mb-4"><UserPlus className="w-6 h-6 mr-2" /> Create Account</h3>
-                    <form onSubmit={handleRegister} className="space-y-3">
-                        <FormInput id="reg-name" label="Full Name *" name="name" value={regForm.name} onChange={handleRegChange} type="text" />
-                        <FormInput id="reg-designation" label="Designation" name="designation" value={regForm.designation} onChange={handleRegChange} type="text" />
-                        <FormInput id="reg-company" label="Company" name="company" value={regForm.company} onChange={handleRegChange} type="text" />
-                        <FormInput id="reg-email" label="Email *" name="email" value={regForm.email} onChange={handleRegChange} type="email" />
-                        <FormInput id="reg-phone" label="Contact Number" name="phone" value={regForm.phone} onChange={handleRegChange} type="tel" placeholder="Optional" />
-                        <FormInput id="reg-password" label="Create Password *" name="password" value={regForm.password} onChange={handleRegChange} type="password" />
-
-                        <button type="submit" disabled={isSubmitting} className={`w-full py-3 text-lg font-semibold rounded-xl text-slate-900 transition-all shadow-lg mt-6 bg-blue-400 hover:bg-blue-300 disabled:opacity-50 flex items-center justify-center`}>
-                            {isSubmitting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <UserPlus className="h-5 w-5 mr-2" />}
-                            {isSubmitting ? 'Registering...' : 'Register'}
-                        </button>
-                    </form>
-                </div>
-
-                <div className="p-6 bg-slate-700/50 rounded-xl border border-green-500/50 shadow-inner flex flex-col justify-center">
-                    <h3 className="text-2xl font-bold text-green-300 flex items-center mb-4"><LogIn className="w-6 h-6 mr-2" /> Sign In</h3>
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <FormInput id="login-email" label="Email *" name="email" value={loginForm.email} onChange={handleLoginChange} type="email" />
-                        <FormInput id="login-password" label="Password *" name="password" value={loginForm.password} onChange={handleLoginChange} type="password" />
-
-                        <button type="submit" disabled={isSubmitting} className={`w-full py-3 text-lg font-semibold rounded-xl text-slate-900 transition-all shadow-lg mt-6 bg-green-400 hover:bg-green-300 disabled:opacity-50 flex items-center justify-center`}>
-                            {isSubmitting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <LogIn className="h-5 w-5 mr-2" />}
-                            {isSubmitting ? 'Signing in...' : 'Sign In'}
-                        </button>
-                    </form>
-
-                    {errorMessage && (
-                        <div className={`mt-4 p-3 ${isSuccess ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-red-900/40 text-red-300 border-red-700'} border rounded-xl flex items-center`}>
-                            {isSuccess ? <CheckCircle className="w-5 h-5 mr-3"/> : <AlertTriangle className="w-5 h-5 mr-3"/>}
-                            <p className="text-sm font-medium">{errorMessage}</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- MAIN APP COMPONENT ---
-const App = () => {
-    const [currentPage, setCurrentPage] = useState(PAGE.HOME);
-    const [errorMessage, setErrorMessage] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [currentUser, setCurrentUser] = useState(null);
-    const [userId, setUserId] = useState(null);
-    const [usageLimits, setUsageLimits] = useState({ initiatorChecks: 0, bidderChecks: 0, isSubscribed: false });
-    const [reportsHistory, setReportsHistory] = useState([]);
-    const [showPaywall, setShowPaywall] = useState(false);
-    
-    const [RFQFile, setRFQFile] = useState(null);
-    const [BidFile, setBidFile] = useState(null);
-    const [report, setReport] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-
-    // --- EFFECT 1: Auth State Listener ---
-    useEffect(() => {
-        if (!auth) return;
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                setUserId(user.uid);
-                setCurrentPage(prev => prev === PAGE.HOME ? PAGE.COMPLIANCE_CHECK : prev);
-                try {
-                    const userDoc = await getDoc(doc(db, 'users', user.uid));
-                    if (userDoc.exists()) {
-                        setCurrentUser({ uid: user.uid, ...userDoc.data() });
-                    } else {
-                        setCurrentUser({ uid: user.uid, role: 'USER' });
-                    }
-                } catch (error) {
-                    console.error("Error fetching user profile:", error);
-                    setCurrentUser({ uid: user.uid, role: 'USER' });
-                }
-            } else {
-                setUserId(null);
-                setCurrentUser(null);
-                setCurrentPage(PAGE.HOME);
-            }
-            setIsAuthReady(true);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    // --- EFFECT 2: Usage Limits Listener ---
-    useEffect(() => {
-        if (db && userId) {
-            const docRef = getUsageDocRef(db, userId);
-            const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    // Load usage limits. If undefined, assume 0 and not subscribed.
-                    setUsageLimits({ 
-                        bidderChecks: docSnap.data().bidderChecks || 0, 
-                        isSubscribed: docSnap.data().isSubscribed || false 
-                    });
-                } else {
-                    // Initialize new user with 0 checks and false subscription
-                    const initialData = { initiatorChecks: 0, bidderChecks: 0, isSubscribed: false };
-                    setDoc(docRef, initialData).catch(e => console.error("Error creating usage doc:", e));
-                    setUsageLimits(initialData);
-                }
-            }, (error) => console.error("Error listening to usage limits:", error));
-            return () => unsubscribe();
-        }
-    }, [userId]);
-
-    // --- EFFECT 3: Report History Listener ---
-    useEffect(() => {
-        if (!db || !currentUser) return;
-        let unsubscribeSnapshot = null;
-        let q;
-        try {
-            if (currentUser.role === 'ADMIN') {
-                const collectionGroupRef = collectionGroup(db, 'compliance_reports');
-                q = query(collectionGroupRef);
-            } else if (userId) {
-                const reportsRef = getReportsCollectionRef(db, userId);
-                q = query(reportsRef);
-            }
-            if (q) {
-                unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-                    const history = [];
-                    snapshot.forEach(docSnap => {
-                        const ownerId = docSnap.ref.parent.parent ? docSnap.ref.parent.parent.id : userId;
-                        history.push({ id: docSnap.id, ownerId: ownerId, ...docSnap.data() });
-                    });
-                    history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                    setReportsHistory(history);
-                });
-            }
-        } catch (err) { console.error("Error setting up history listener:", err); }
-        return () => unsubscribeSnapshot && unsubscribeSnapshot();
-    }, [userId, currentUser]);
-
-    // --- EFFECT 4: Load Libraries ---
-    useEffect(() => {
-        const loadScript = (src) => {
-            return new Promise((resolve, reject) => {
-                if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = resolve;
-                script.onerror = () => reject();
-                document.head.appendChild(script);
-            });
-        };
-        const loadAllLibraries = async () => {
-            try {
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
-                if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
-            } catch (e) { console.warn("Doc parsing libs failed."); }
-        };
-        loadAllLibraries();
-    }, []); 
-
-    const incrementUsage = async () => {
-        if (!db || !userId) return;
-        const docRef = getUsageDocRef(db, userId);
-        try {
-            await runTransaction(db, async (transaction) => {
-                const docSnap = await transaction.get(docRef);
-                const currentData = docSnap.exists() ? docSnap.data() : { bidderChecks: 0, isSubscribed: false };
-                if (!docSnap.exists()) transaction.set(docRef, currentData);
-                transaction.update(docRef, { bidderChecks: (currentData.bidderChecks || 0) + 1 });
-            });
-        } catch (e) { console.error("Usage update failed:", e); }
-    };
-
-    const handleAnalyze = useCallback(async (role) => {
-        // --- PAYWALL CHECK ---
-        // ADMIN bypasses all limits.
-        // Non-Subscribed Users get blocked at limit.
-        if (currentUser?.role !== 'ADMIN' && !usageLimits.isSubscribed && usageLimits.bidderChecks >= MAX_FREE_AUDITS) {
-            setShowPaywall(true);
-            return;
-        }
-
-        if (!RFQFile || !BidFile) { setErrorMessage("Please upload both documents."); return; }
-        setLoading(true); setReport(null); setErrorMessage(null);
-
-        try {
-            const rfqContent = await processFile(RFQFile);
-            const bidContent = await processFile(BidFile);
-            
-            const systemPrompt = {
-                parts: [{
-                    text: `You are the SmartBid Compliance Auditor & Coach.
-                    
-                    **TASK 1: Market Intel**
-                    1. EXTRACT 'projectTitle', 'grandTotalValue', 'industryTag', 'primaryRisk', 'rfqScopeSummary'.
-                    2. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'incumbentSystem', 'requiredCertifications'.
-
-                    **TASK 2: Bid Coaching**
-                    1. GENERATE 'generatedExecutiveSummary': MANDATORY: Start by referencing the specific Project Background from the RFQ, then transition to the Vendor's solution and value proposition.
-                    2. CALCULATE 'persuasionScore' (0-100).
-                    3. ANALYZE 'toneAnalysis' (One word).
-                    4. FIND 'weakWords' (List 3).
-                    5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
-                    6. ALERT 'legalRiskAlerts'.
-                    7. CHECK 'submissionChecklist' (List artifacts).
-
-                    **TASK 3: Compliance Audit**
-                    1. Identify mandatory requirements.
-                    2. Score (1/0.5/0).
-                    3. CRITICAL: Copy EXACT text to 'requirementFromRFQ'.
-                    
-                    Output JSON.`
-                }]
-            };
-
-            const userQuery = `RFQ:\n${rfqContent}\n\nBid:\n${bidContent}\n\nPerform audit.`;
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                systemInstruction: systemPrompt,
-                generationConfig: { responseMimeType: "application/json", responseSchema: COMPREHENSIVE_REPORT_SCHEMA },
-            };
-
-            const response = await fetchWithRetry(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const result = await response.json();
-            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-            if (jsonText) {
-                setReport(JSON.parse(jsonText));
-                await incrementUsage();
-            } else { throw new Error("AI returned invalid data."); }
-
-        } catch (error) {
-            setErrorMessage(`Analysis failed: ${error.message}`);
-        } finally { setLoading(false); }
-    }, [RFQFile, BidFile, usageLimits, currentUser]);
-
-    const generateTestData = useCallback(async () => {
-        const mockRfqContent = `PROJECT TITLE: OFFSHORE PIPELINE MAINT.\nSCOPE: Inspect pipelines.\n1. TECH: REST API required.`;
-        const mockBidContent = `EXECUTIVE SUMMARY: We will do it.\n1. We use GraphQL.`;
-        setRFQFile(new File([mockRfqContent], "MOCK_RFQ.txt", { type: "text/plain" }));
-        setBidFile(new File([mockBidContent], "MOCK_BID.txt", { type: "text/plain" }));
-        setErrorMessage("Mock docs loaded. Click Run Audit.");
-    }, []);
-
-    const saveReport = useCallback(async (role) => {
-        if (!db || !userId || !report) { setErrorMessage("No report to save."); return; }
-        setSaving(true);
-        try {
-            const reportsRef = getReportsCollectionRef(db, userId);
-            await addDoc(reportsRef, {
-                ...report,
-                rfqName: RFQFile?.name || 'Untitled',
-                bidName: BidFile?.name || 'Untitled',
-                timestamp: Date.now(),
-                role: role, 
-            });
-            setErrorMessage("Report saved successfully!"); 
-            setTimeout(() => setErrorMessage(null), 3000);
-        } catch (error) {
-            setErrorMessage(`Failed to save: ${error.message}.`);
-        } finally { setSaving(false); }
-    }, [db, userId, report, RFQFile, BidFile]);
-    
-    const deleteReport = useCallback(async (reportId, rfqName, bidName) => {
-        if (!db || !userId) return;
-        setErrorMessage(`Deleting...`);
-        try {
-            const reportsRef = getReportsCollectionRef(db, userId);
-            await deleteDoc(doc(reportsRef, reportId));
-            if (report && report.id === reportId) setReport(null);
-            setErrorMessage("Deleted!");
-            setTimeout(() => setErrorMessage(null), 3000);
-        } catch (error) { setErrorMessage(`Delete failed: ${error.message}`); }
-    }, [db, userId, report]);
-
-    const loadReportFromHistory = useCallback((historyItem) => {
-        setRFQFile(null); setBidFile(null);
-        setReport({ id: historyItem.id, ...historyItem });
-        setCurrentPage(PAGE.COMPLIANCE_CHECK); 
-        setErrorMessage(`Loaded: ${historyItem.rfqName}`);
-        setTimeout(() => setErrorMessage(null), 3000);
-    }, []);
-    
-    const renderPage = () => {
-        switch (currentPage) {
-            case PAGE.HOME:
-                return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} errorMessage={errorMessage} db={db} auth={auth} />;
-            case PAGE.COMPLIANCE_CHECK:
-                return <AuditPage 
-                    title="Bidder: Self-Compliance Check" rfqTitle="RFQ" bidTitle="Bid" role="BIDDER"
-                    handleAnalyze={handleAnalyze} usageLimits={usageLimits.bidderChecks} setCurrentPage={setCurrentPage}
-                    currentUser={currentUser} loading={loading} RFQFile={RFQFile} BidFile={BidFile}
-                    setRFQFile={setRFQFile} setBidFile={setBidFile} generateTestData={generateTestData} 
-                    errorMessage={errorMessage} report={report} saveReport={saveReport} saving={saving}
-                    setErrorMessage={setErrorMessage} userId={userId} 
-                />;
-            case PAGE.ADMIN:
-                return <AdminDashboard setCurrentPage={setCurrentPage} currentUser={currentUser} reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} />;
-            case PAGE.HISTORY:
-                return <ReportHistory reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} isAuthReady={isAuthReady} userId={userId} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            default: return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} errorMessage={errorMessage} db={db} auth={auth} />;
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100">
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&display=swap');
-                .font-body, .font-body * { font-family: 'Lexend', sans-serif !important; }
-                input[type="file"] { display: block; width: 100%; }
-                input[type="file"]::file-selector-button { background-color: #f59e0b; color: #1e293b; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
-                @media print { body * { visibility: hidden; } #admin-print-area, #admin-print-area * { visibility: visible; } #admin-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; } .no-print { display: none; } }
-            `}</style>
-            <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
-            <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} />
         </div>
     );
 };
@@ -672,87 +284,12 @@ const StatCard = ({ icon, label, value }) => (
   </div>
 );
 
-const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory }) => {
-  const [userList, setUserList] = useState([]);
-  useEffect(() => {
-    getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, []);
-
-  const exportToCSV = (data, filename) => {
-    const csvContent = "data:text/csv;charset=utf-8," + Object.keys(data[0]).join(",") + "\n" + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
-    const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
-
-  return (
-    <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
-      <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-        <h2 className="text-3xl font-bold text-white flex items-center"><Shield className="w-8 h-8 mr-3 text-red-400" /> Admin Market Intel</h2>
-        <div className="flex space-x-3 no-print">
-            <button onClick={() => window.print()} className="text-sm text-slate-400 hover:text-white bg-slate-700 px-3 py-2 rounded-lg"><Printer className="w-4 h-4 mr-2" /> Print</button>
-            <button onClick={() => setCurrentPage('HOME')} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 no-print">
-        <button onClick={() => setCurrentPage('COMPLIANCE_CHECK')} className="p-4 bg-blue-600 rounded-xl text-white font-semibold flex justify-center"><FileUp className="w-5 h-5 mr-2" /> Compliance Check</button>
-        <button onClick={() => setCurrentPage('HISTORY')} className="p-4 bg-slate-600 rounded-xl text-white font-semibold flex justify-center"><List className="w-5 h-5 mr-2" /> View History</button>
-      </div>
-      <div className="pt-4 border-t border-slate-700">
-        <div className="flex justify-between mb-4">
-            <h3 className="text-xl font-bold text-white flex items-center"><Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Feed</h3>
-            <button onClick={() => exportToCSV(reportsHistory.map(r => ({ ...r, vendor: userList.find(u => u.id === r.ownerId)?.name })), 'market.csv')} className="text-xs bg-green-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button>
-        </div>
-        <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
-            <div key={item.id} onClick={() => loadReportFromHistory(item)} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-900">
-                <div className="flex justify-between mb-2"><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName}</h4><span className="text-slate-500 text-xs">{new Date(item.timestamp).toLocaleDateString()}</span></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <p className="text-xs text-green-400 font-bold"><DollarSign className="w-3 h-3 inline"/> {item.grandTotalValue}</p>
-                    <p className="text-xs text-red-400 font-bold"><Activity className="w-3 h-3 inline"/> {item.primaryRisk}</p>
-                </div>
-            </div>
-        ))}</div>
-      </div>
-      <div className="pt-4 border-t border-slate-700">
-         <h3 className="text-xl font-bold text-white mb-4"><Users className="w-5 h-5 mr-2 text-blue-400" /> Vendor Registry</h3>
-         <div className="max-h-64 overflow-y-auto bg-slate-900 rounded-xl border border-slate-700 p-4 space-y-4">
-            {userList.map((user, i) => <UserCard key={i} user={user} />)}
-         </div>
-      </div>
+const MetricPill = ({ label, count, color }) => (
+    <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
+        <div className={`text-xl font-bold ${color}`}>{count}</div>
+        <div className="text-slate-400 text-xs mt-1">{label}</div>
     </div>
-  );
-};
-
-const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
-    return (
-        <>
-            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
-                    <h2 className="text-2xl font-bold text-white">{title}</h2>
-                    <div className="text-right">
-                        {/* ADMIN BYPASS DISPLAY FIX */}
-                        {currentUser?.role === 'ADMIN' ? (
-                            <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p>
-                        ) : (
-                            <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>
-                        )}
-                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
-                    </div>
-                </div>
-                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
-                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
-                </div>
-                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
-                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
-                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
-                </button>
-                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
-                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
-            </div>
-            {report && <ComplianceReport report={report} />}
-        </>
-    );
-};
+);
 
 const FileUploader = ({ title, file, setFile, color, requiredText }) => (
     <div className={`p-6 border-2 border-dashed border-${color}-600/50 rounded-2xl bg-slate-900/50 space-y-3`}>
@@ -762,6 +299,8 @@ const FileUploader = ({ title, file, setFile, color, requiredText }) => (
         {file && <p className="text-sm font-medium text-green-400 flex items-center"><CheckCircle className="w-4 h-4 mr-1 text-green-500" /> {file.name}</p>}
     </div>
 );
+
+// --- MAJOR COMPONENTS ---
 
 const ComplianceReport = ({ report }) => {
     const findings = report.findings || []; 
@@ -842,7 +381,164 @@ const ComplianceReport = ({ report }) => {
             )}
         </div>
     );
+};
+
+const ComplianceRanking = ({ reportsHistory, loadReportFromHistory, deleteReport, currentUser }) => { 
+    if (reportsHistory.length === 0) return null;
+    const groupedReports = reportsHistory.reduce((acc, report) => {
+        const rfqName = report.rfqName;
+        const percentage = getCompliancePercentage(report); 
+        if (!acc[rfqName]) acc[rfqName] = { allReports: [], count: 0 };
+        acc[rfqName].allReports.push({ ...report, percentage });
+        acc[rfqName].count += 1;
+        return acc;
+    }, {});
+    const rankedProjects = Object.entries(groupedReports).filter(([_, data]) => data.allReports.length >= 1).sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
+    return (
+        <div className="mt-8">
+            <h2 className="text-xl font-bold text-white flex items-center mb-4 border-b border-slate-700 pb-2"><Layers className="w-5 h-5 mr-2 text-blue-400"/> Compliance Ranking by RFQ</h2>
+            <div className="space-y-6">
+                {rankedProjects.map(([rfqName, data]) => (
+                    <div key={rfqName} className="p-5 bg-slate-700/50 rounded-xl border border-slate-600 shadow-lg">
+                        <h3 className="text-lg font-extrabold text-amber-400 mb-4 border-b border-slate-600 pb-2">{rfqName} <span className="text-sm font-normal text-slate-400">({data.count} Revisions)</span></h3>
+                        <div className="space-y-3">
+                            {data.allReports.sort((a, b) => b.percentage - a.percentage).map((report, idx) => (
+                                <div key={report.id} className="p-3 rounded-lg border border-slate-600 bg-slate-900/50 space-y-2 flex justify-between items-center hover:bg-slate-700/50">
+                                    <div className='flex items-center cursor-pointer' onClick={() => loadReportFromHistory(report)}>
+                                        <div className={`text-xl font-extrabold w-8 ${idx === 0 ? 'text-green-400' : 'text-slate-500'}`}>#{idx + 1}</div>
+                                        <div className='ml-3'><p className="text-sm font-medium text-white">{report.bidName}</p><p className="text-xs text-slate-400">{new Date(report.timestamp).toLocaleDateString()}</p></div>
+                                    </div>
+                                    <div className="flex items-center">
+                                        {currentUser && currentUser.role === 'ADMIN' && <button onClick={(e) => {e.stopPropagation(); deleteReport(report.id, report.rfqName, report.bidName, report.ownerId || currentUser.uid);}} className="mr-2 p-1 bg-red-600 rounded"><Trash2 className="w-4 h-4 text-white"/></button>}
+                                        <span className="px-2 py-0.5 rounded text-sm font-bold bg-blue-600 text-slate-900">{report.percentage}%</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, userId, setCurrentPage, currentUser, deleteReport }) => { 
+    if (!isAuthReady || !userId) return <div className="text-center text-red-400">Please login to view history.</div>;
+    return (
+        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
+                <h2 className="text-xl font-bold text-white flex items-center"><Clock className="w-5 h-5 mr-2 text-amber-500"/> Saved Report History ({reportsHistory.length})</h2>
+                <button onClick={() => setCurrentPage(PAGE.COMPLIANCE_CHECK)} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1"/> Back</button>
+            </div>
+            <ComplianceRanking reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} currentUser={currentUser} />
+            <h3 className="text-lg font-bold text-white mt-8 mb-4 border-b border-slate-700 pb-2">All Reports</h3>
+            {reportsHistory.length === 0 ? <p className="text-slate-400 italic">No saved reports found.</p> : (
+                <div className="space-y-4">{reportsHistory.map(item => (
+                    <div key={item.id} className="flex justify-between items-center p-4 bg-slate-700/50 rounded-xl border border-slate-700 hover:bg-slate-700/80">
+                        <div className="mr-4"><p className="text-sm font-medium text-white">{item.rfqName} vs {item.bidName}</p><p className="text-xs text-slate-400">{new Date(item.timestamp).toLocaleDateString()}</p></div>
+                        <div className='flex items-center space-x-2'>
+                            <button onClick={() => loadReportFromHistory(item)} className="px-4 py-2 text-xs rounded-lg bg-amber-500 text-slate-900 hover:bg-amber-400"><ArrowLeft className="w-3 h-3 inline mr-1 rotate-180"/> Load</button>
+                            {currentUser && currentUser.role === 'ADMIN' && <button onClick={(e) => {e.stopPropagation(); deleteReport(item.id, item.rfqName, item.bidName, item.ownerId || userId);}} className="px-4 py-2 text-xs rounded-lg bg-red-600 text-white hover:bg-red-500"><Trash2 className="w-3 h-3 inline"/></button>}
+                        </div>
+                    </div>
+                ))}</div>
+            )}
+        </div>
+    );
+};
+
+const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory }) => {
+  const [userList, setUserList] = useState([]);
+  useEffect(() => {
+    getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, []);
+  const exportToCSV = (data, filename) => {
+    const csvContent = "data:text/csv;charset=utf-8," + Object.keys(data[0]).join(",") + "\n" + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
+    const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  };
+  return (
+    <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
+      <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+        <h2 className="text-3xl font-bold text-white flex items-center"><Shield className="w-8 h-8 mr-3 text-red-400" /> Admin Market Intel</h2>
+        <div className="flex space-x-3 no-print">
+            <button onClick={() => window.print()} className="text-sm text-slate-400 hover:text-white bg-slate-700 px-3 py-2 rounded-lg"><Printer className="w-4 h-4 mr-2" /> Print</button>
+            <button onClick={() => setCurrentPage('HOME')} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 no-print">
+        <button onClick={() => setCurrentPage('COMPLIANCE_CHECK')} className="p-4 bg-blue-600 rounded-xl text-white font-semibold flex justify-center"><FileUp className="w-5 h-5 mr-2" /> Compliance Check</button>
+        <button onClick={() => setCurrentPage('HISTORY')} className="p-4 bg-slate-600 rounded-xl text-white font-semibold flex justify-center"><List className="w-5 h-5 mr-2" /> View History</button>
+      </div>
+      <div className="pt-4 border-t border-slate-700">
+        <div className="flex justify-between mb-4">
+            <h3 className="text-xl font-bold text-white flex items-center"><Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Feed</h3>
+            <button onClick={() => exportToCSV(reportsHistory.map(r => ({ ID: r.id, Project: r.projectTitle || r.rfqName, Scope: r.rfqScopeSummary, Vendor: userList.find(u => u.id === r.ownerId)?.name, Industry: r.industryTag, Value: r.grandTotalValue, Location: r.projectLocation, Duration: r.contractDuration, Tech: r.techKeywords, Incumbent: r.incumbentSystem, Regulations: r.requiredCertifications, Risk: r.primaryRisk, Score: getCompliancePercentage(r) + '%' })), 'market.csv')} className="text-xs bg-green-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button>
+        </div>
+        <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
+            <div key={item.id} onClick={() => loadReportFromHistory(item)} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-900">
+                <div className="flex justify-between mb-2">
+                    <div><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName}</h4><p className="text-sm text-slate-400"><MapPin className="w-3 h-3 inline"/> {item.projectLocation} • <Calendar className="w-3 h-3 inline"/> {item.contractDuration}</p></div>
+                    <div className="text-right"><div className="text-xl font-bold text-green-400">{getCompliancePercentage(item)}%</div><span className="text-slate-500 text-xs">{new Date(item.timestamp).toLocaleDateString()}</span></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <p className="text-xs text-green-400 font-bold"><DollarSign className="w-3 h-3 inline"/> {item.grandTotalValue}</p>
+                    <p className="text-xs text-red-400 font-bold"><Activity className="w-3 h-3 inline"/> {item.primaryRisk}</p>
+                </div>
+            </div>
+        ))}</div>
+      </div>
+      <div className="pt-4 border-t border-slate-700">
+         <div className="flex justify-between mb-4"><h3 className="text-xl font-bold text-white"><Users className="w-5 h-5 mr-2 text-blue-400" /> Vendor Registry</h3><button onClick={() => exportToCSV(userList.map(u => ({ Name: u.name, Company: u.company, Role: u.role, Email: u.email })), 'vendors.csv')} className="text-xs bg-blue-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button></div>
+         <div className="max-h-64 overflow-y-auto bg-slate-900 rounded-xl border border-slate-700 p-4 space-y-4">
+            <table className="w-full text-left text-sm text-slate-400">
+                <thead className="bg-slate-800 text-white"><tr><th className="p-2">Name</th><th className="p-2">Company</th><th className="p-2">Role</th></tr></thead>
+                <tbody>{userList.map((user, i) => <tr key={i} className="border-b border-slate-800"><td className="p-2">{user.name}</td><td className="p-2">{user.company}</td><td className="p-2">{user.role}</td></tr>)}</tbody>
+            </table>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
+    return (
+        <>
+            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
+                    <h2 className="text-2xl font-bold text-white">{title}</h2>
+                    <div className="text-right">
+                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
+                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
+                    </div>
+                </div>
+                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
+                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
+                </div>
+                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
+                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
+                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
+                </button>
+                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
+                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
+            </div>
+            {report && <ComplianceReport report={report} />}
+        </>
+    );
+};
+
+// --- APP COMPONENT (Bottom of file) ---
+// Now App is defined AFTER all sub-components are defined.
+// This fixes the ReferenceError.
+const MainApp = App; 
+
+function TopLevelApp() {
+    return (
+        <ErrorBoundary>
+            <MainApp />
+        </ErrorBoundary>
+    );
 }
 
-function TopLevelApp() { return <ErrorBoundary><App /></ErrorBoundary>; }
 export default TopLevelApp;
