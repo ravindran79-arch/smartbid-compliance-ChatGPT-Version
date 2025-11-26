@@ -3,14 +3,14 @@ import {
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
     Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, 
-    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard
+    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard, HelpCircle
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, onAuthStateChanged, createUserWithEmailAndPassword, 
-    signInWithEmailAndPassword, signOut
+    signInWithEmailAndPassword, signOut 
 } from 'firebase/auth';
 import { 
     getFirestore, collection, addDoc, onSnapshot, query, doc, setDoc, 
@@ -48,49 +48,82 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
     properties: {
-        "projectTitle": { "type": "STRING" },
-        "rfqScopeSummary": { "type": "STRING" },
-        "grandTotalValue": { "type": "STRING" },
+        // --- ADMIN / MARKET INTEL FIELDS ---
+        "projectTitle": { "type": "STRING", "description": "Official Project Title from RFQ." },
+        "rfqScopeSummary": { "type": "STRING", "description": "High-level scope summary from RFQ." },
+        "grandTotalValue": { "type": "STRING", "description": "Total Bid Price/Cost." },
         "industryTag": { 
             "type": "STRING", 
-            "description": "STRICTLY classify into ONE: 'Energy / Oil & Gas', 'Construction / Infrastructure', 'IT / SaaS / Technology', 'Healthcare / Medical', 'Logistics / Supply Chain', 'Consulting / Professional Services', 'Manufacturing / Industrial', 'Financial Services', or 'Other'."
+            "description": "STRICTLY classify into ONE of these exact categories: 'Energy / Oil & Gas', 'Construction / Infrastructure', 'IT / SaaS / Technology', 'Healthcare / Medical', 'Logistics / Supply Chain', 'Consulting / Professional Services', 'Manufacturing / Industrial', 'Financial Services', or 'Other'."
         },
-        "primaryRisk": { "type": "STRING" },
-        "projectLocation": { "type": "STRING" },
-        "contractDuration": { "type": "STRING" },
-        "techKeywords": { "type": "STRING" },
-        "requiredCertifications": { "type": "STRING" },
-        "buyingPersona": { "type": "STRING" },
-        "complexityScore": { "type": "STRING" },
-        "trapCount": { "type": "STRING" },
-        "leadTemperature": { "type": "STRING" },
+        "primaryRisk": { "type": "STRING", "description": "Biggest deal-breaker risk." },
+        "projectLocation": { "type": "STRING", "description": "Geographic location." },
+        "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
+        "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
+        "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
+
+        // --- NEW STRATEGIC METRICS ---
+        "buyingPersona": { 
+            "type": "STRING", 
+            "description": "Classify the Buyer's psychology based on the RFQ tone. Options: 'PRICE-DRIVEN' (Focus on budget caps, L1) or 'VALUE-DRIVEN' (Focus on quality, partnership, innovation)." 
+        },
+        "complexityScore": { 
+            "type": "STRING", 
+            "description": "Rate the project complexity from 1/10 to 10/10 based on scope, timeline tightness, and technical requirements." 
+        },
+        "trapCount": { 
+            "type": "STRING", 
+            "description": "Count the number of dangerous clauses found (e.g., Liquidated Damages, Unlimited Liability). Output format: 'X Critical Traps'." 
+        },
+        "leadTemperature": { 
+            "type": "STRING", 
+            "description": "Assess the probability of winning based on the Bidder's match to requirements. Options: 'HOT LEAD' (High Match), 'WARM LEAD' (Medium), 'COLD LEAD' (Low)." 
+        },
 
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a comprehensive 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ context (Client's specific need). PARAGRAPH 2: Validate the Bidder's specific suitability (USP, Tech, Experience)."
+            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
         },
-        "persuasionScore": { "type": "NUMBER" },
-        "toneAnalysis": { "type": "STRING" },
-        "weakWords": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "persuasionScore": {
+            "type": "NUMBER",
+            "description": "Score from 0-100 based on confidence, active voice, and clarity of the Bid."
+        },
+        "toneAnalysis": {
+            "type": "STRING",
+            "description": "One word describing the bid tone (e.g., 'Confident', 'Passive', 'Vague', 'Aggressive')."
+        },
+        "weakWords": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List up to 3 weak words found (e.g., 'hope', 'believe', 'try')."
+        },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" } },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" } }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
             }
         },
-        "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
-        "submissionChecklist": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "legalRiskAlerts": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List dangerous legal clauses accepted without pushback."
+        },
+        "submissionChecklist": {
+            "type": "ARRAY",
+            "items": { "type": "STRING" },
+            "description": "List of physical artifacts/attachments required by the RFQ."
+        },
 
         // --- CORE COMPLIANCE FIELDS ---
-        "executiveSummary": { "type": "STRING" },
+        "executiveSummary": { "type": "STRING", "description": "Audit summary." },
         "findings": {
             "type": "ARRAY",
             "items": {
                 "type": "OBJECT",
                 "properties": {
-                    "requirementFromRFQ": { "type": "STRING" },
+                    "requirementFromRFQ": { "type": "STRING", "description": "EXACT TEXT of requirement." },
                     "complianceScore": { "type": "NUMBER" },
                     "bidResponseSummary": { "type": "STRING" },
                     "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
@@ -472,10 +505,11 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                 role: 'USER',
                 createdAt: Date.now()
             });
-            // --- FIX: Registration Logic ---
-            // 1. Autofill Login
+            
+            // FIX: Registration Flow - Sign Out immediately to prevent auto-redirect
+            await signOut(auth);
+            
             setLoginForm({ email: regForm.email, password: regForm.password });
-            // 2. Show Success (Do NOT Navigate)
             setErrorMessage('SUCCESS: Registration complete! Credentials autofilled. Please Sign In below.');
         } catch (err) {
             console.error('Registration error', err);
@@ -491,7 +525,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles it
+            // No direct navigation here; App effect handles role-based redirect
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -553,20 +587,53 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
   useEffect(() => {
     getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
+  
   const exportToCSV = (data, filename) => {
+    if (!data || !data.length) return;
     const csvContent = "data:text/csv;charset=utf-8," + Object.keys(data[0]).join(",") + "\n" + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
     const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
+  
   const handleVendorExport = () => {
-      const cleanVendorData = userList.map(u => ({ "Full Name": u.name, "Designation": u.designation, "Company": u.company, "Email": u.email, "Contact Number": u.phone, "Role": u.role }));
+      const cleanVendorData = userList.map(u => ({
+          "Full Name": u.name || '',
+          "Designation": u.designation || '',
+          "Company": u.company || '',
+          "Email": u.email || '',
+          "Contact Number": u.phone || '',
+          "Role": u.role || 'USER'
+      }));
       exportToCSV(cleanVendorData, 'vendor_registry.csv');
   };
+  
   const handleMarketExport = () => {
       const cleanMarketData = reportsHistory.map(r => ({
-          ID: r.id, Project: r.projectTitle || r.rfqName, "Scope of Work": r.rfqScopeSummary || 'N/A', Vendor: userList.find(u => u.id === r.ownerId)?.name, Industry: r.industryTag, Value: r.grandTotalValue, Location: r.projectLocation, Duration: r.contractDuration, "Tech Stack": r.techKeywords, Regulations: r.requiredCertifications, "Risk Identified": r.primaryRisk, "Buying Persona": r.buyingPersona, "Complexity Score": r.complexityScore, "Trap Count": r.trapCount, "Lead Temperature": r.leadTemperature, Score: getCompliancePercentage(r) + '%'
+          ID: r.id,
+          Project: r.projectTitle || r.rfqName,
+          "Scope of Work": r.rfqScopeSummary || 'N/A',
+          Vendor: userList.find(u => u.id === r.ownerId)?.name || 'Unknown',
+          Industry: r.industryTag || 'Unknown',
+          Value: r.grandTotalValue || 'Unknown',
+          Location: r.projectLocation || 'N/A',
+          Duration: r.contractDuration || 'N/A',
+          "Tech Stack": r.techKeywords || 'N/A',
+          Regulations: r.requiredCertifications || 'N/A',
+          "Risk Identified": r.primaryRisk || 'N/A',
+          "Buying Persona": r.buyingPersona || 'N/A',
+          "Complexity Score": r.complexityScore || 'N/A',
+          "Trap Count": r.trapCount || 'N/A',
+          "Lead Temperature": r.leadTemperature || 'N/A',
+          Score: getCompliancePercentage(r) + '%'
       }));
       exportToCSV(cleanMarketData, 'market_data.csv');
   };
+
+  // Helper for Report User
+  const getUserForReport = (ownerId) => {
+    const found = userList.find(u => u.id === ownerId);
+    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
+  };
+
   return (
     <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
@@ -576,9 +643,21 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
             <button onClick={() => setCurrentPage('HOME')} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
         </div>
       </div>
+
+      {/* METRIC LEGEND (FIXED: ADDED THIS SECTION) */}
+      <div className="bg-slate-700/30 border border-slate-600 rounded-xl p-4 no-print">
+         <div className="flex items-center mb-2"><HelpCircle className="w-4 h-4 mr-2 text-blue-400"/><h4 className="text-sm font-bold text-white">Metric Definitions (God View)</h4></div>
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400">
+             <div><span className="text-blue-300 font-bold">Buying Persona:</span><br/>Is the client focused on Price (Budget) or Value (Innovation)?</div>
+             <div><span className="text-purple-300 font-bold">Complexity Score:</span><br/>1-10 rating of project difficulty & timeline tightness.</div>
+             <div><span className="text-orange-300 font-bold">Trap Count:</span><br/>Number of dangerous legal clauses found (e.g. Unlimited Liability).</div>
+             <div><span className="text-pink-300 font-bold">Lead Temperature:</span><br/>Win probability based on vendor suitability match.</div>
+         </div>
+      </div>
+
       <div className="pt-4 border-t border-slate-700">
         <div className="flex justify-between mb-4">
-            <div className="flex items-center"><h3 className="text-xl font-bold text-white mr-2"><Eye className="w-6 h-6 inline mr-2 text-amber-400" /> Live Market Feed</h3></div>
+            <h3 className="text-xl font-bold text-white flex items-center"><Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Feed</h3>
             <button onClick={handleMarketExport} className="text-xs bg-green-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button>
         </div>
         <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
@@ -617,34 +696,6 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
       </div>
     </div>
   );
-};
-
-const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
-    return (
-        <>
-            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
-                    <h2 className="text-2xl font-bold text-white">{title}</h2>
-                    <div className="text-right">
-                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
-                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
-                    </div>
-                </div>
-                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
-                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
-                </div>
-                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
-                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
-                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
-                </button>
-                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
-                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
-            </div>
-            {report && <ComplianceReport report={report} />}
-        </>
-    );
 };
 
 // --- APP COMPONENT (DEFINED LAST) ---
@@ -819,7 +870,6 @@ const App = () => {
                     5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
                     6. ALERT 'legalRiskAlerts'.
                     7. CHECK 'submissionChecklist' (List artifacts).
-                    8. CLEAN UP TEXT: Fix any OCR/PDF spacing errors (e.g. 'Veri fi cation' -> 'Verification').
 
                     **TASK 3: Compliance Audit**
                     1. Identify mandatory requirements.
