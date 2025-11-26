@@ -63,60 +63,28 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
         "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
-        
-        // --- GOD VIEW METRICS ---
-        "buyingPersona": { 
-            "type": "STRING", 
-            "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." 
-        },
-        "complexityScore": { 
-            "type": "STRING", 
-            "description": "Rate project complexity (e.g. '8/10')." 
-        },
-        "trapCount": { 
-            "type": "STRING", 
-            "description": "Count dangerous clauses (e.g. '3 Critical Traps')." 
-        },
-        "leadTemperature": { 
-            "type": "STRING", 
-            "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." 
-        },
+        "buyingPersona": { "type": "STRING", "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." },
+        "complexityScore": { "type": "STRING", "description": "Rate project complexity (e.g. '8/10')." },
+        "trapCount": { "type": "STRING", "description": "Count dangerous clauses (e.g. '3 Critical Traps')." },
+        "leadTemperature": { "type": "STRING", "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." },
 
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
             "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. Explicitly restate the Client's primary objectives and pain points. PARAGRAPH 2: Validate the Bidder's solution and specific USP. If the bid lacks a USP, highlight this gap."
         },
-        "persuasionScore": {
-            "type": "NUMBER",
-            "description": "Score from 0-100 based on confidence and clarity."
-        },
-        "toneAnalysis": {
-            "type": "STRING",
-            "description": "One word describing tone (e.g., 'Confident', 'Passive')."
-        },
-        "weakWords": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List 3 weak words found."
-        },
+        "persuasionScore": { "type": "NUMBER" },
+        "toneAnalysis": { "type": "STRING" },
+        "weakWords": { "type": "ARRAY", "items": { "type": "STRING" } },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points." },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points." }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" } },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" } }
             }
         },
-        "legalRiskAlerts": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List dangerous legal clauses accepted."
-        },
-        "submissionChecklist": {
-            "type": "ARRAY",
-            "items": { "type": "STRING" },
-            "description": "List of physical artifacts/attachments required."
-        },
+        "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "submissionChecklist": { "type": "ARRAY", "items": { "type": "STRING" } },
 
         // --- CORE COMPLIANCE FIELDS ---
         "executiveSummary": { "type": "STRING", "description": "Audit summary." },
@@ -132,7 +100,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                     "category": { "type": "STRING", "enum": CATEGORY_ENUM },
                     "negotiationStance": { 
                         "type": "STRING", 
-                        "description": "If score < 1: Write a diplomatic Sales Argument. Justify the deviation by highlighting value, safety, or efficiency. Provide a template sentence."
+                        "description": "SCORE < 1 ONLY: Act as a Sales Diplomat. 1. Identify the deviation. 2. Suggest a 'Pivot Strategy' (e.g. 'Pivot focus to Safety Benefits' or 'Highlight Cost Savings'). 3. Provide a specific justification script the salesperson can use to explain WHY this deviation is actually acceptable or beneficial. Do NOT sound like a compliance officer."
                     }
                 }
             }
@@ -482,7 +450,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, use
     );
 };
 
-// --- PAGE COMPONENTS (DEFINED BEFORE APP) ---
+// --- PAGE COMPONENTS (AuthPage First) ---
 
 const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
@@ -527,7 +495,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation; App effect handles it
+            // No direct navigation here; App effect handles it
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -712,7 +680,7 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // --- EFFECT 1: Auth State Listener ---
+    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -797,10 +765,11 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
-    // --- EFFECT 4: Load Libraries ---
+    // --- EFFECT 4: Load Libraries (Robust Check) ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
+                // Robust check: Do not load if already exists
                 if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
                 const script = document.createElement('script');
                 script.src = src;
@@ -811,10 +780,15 @@ const App = () => {
         };
         const loadAllLibraries = async () => {
             try {
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
-                if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
-            } catch (e) { console.warn("Doc parsing libs failed."); }
+                // Check window objects to prevent double loading warnings
+                if (!window.pdfjsLib) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
+                if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                }
+                if (!window.mammoth) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
+            } catch (e) { 
+                console.warn("Doc parsing libs warning (safe to ignore if features work):", e); 
+            }
         };
         loadAllLibraries();
     }, []); 
@@ -867,6 +841,7 @@ const App = () => {
                     5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
                     6. ALERT 'legalRiskAlerts'.
                     7. CHECK 'submissionChecklist' (List artifacts).
+                    8. CLEAN UP TEXT: Fix any OCR/PDF spacing errors (e.g. 'Veri fi cation' -> 'Verification').
 
                     **TASK 3: Compliance Audit**
                     1. Identify mandatory requirements.
