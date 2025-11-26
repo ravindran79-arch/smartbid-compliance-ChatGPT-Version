@@ -995,20 +995,29 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100">
-            <style>{`
+<style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&display=swap');
                 .font-body, .font-body * { font-family: 'Lexend', sans-serif !important; }
                 input[type="file"] { display: block; width: 100%; }
                 input[type="file"]::file-selector-button { background-color: #f59e0b; color: #1e293b; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
                 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
-                @media print { body * { visibility: hidden; } #admin-print-area, #admin-print-area * { visibility: visible; } #admin-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; } .no-print { display: none; } }
+                
+                /* --- PRINT FIX --- */
+                @media print { 
+                    body * { visibility: hidden; } /* Hide everything by default */
+                    
+                    /* Rule 1: If printing Admin Dashboard */
+                    #admin-print-area, #admin-print-area * { visibility: visible; } 
+                    #admin-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; } 
+                    
+                    /* Rule 2: If printing User Report (THE MISSING FIX) */
+                    #printable-compliance-report, #printable-compliance-report * { visibility: visible; }
+                    #printable-compliance-report { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; }
+                    
+                    .no-print { display: none !important; } 
+                }
             `}</style>
-            <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
-            <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} userId={userId} />
-        </div>
-    );
-};
 
 // --- TOP LEVEL EXPORT ---
 const MainApp = App;
