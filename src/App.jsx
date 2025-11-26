@@ -3,7 +3,7 @@ import {
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
     Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, 
-    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard, HelpCircle
+    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard, Info
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -32,7 +32,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
+// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
 const API_URL = '/api/analyze'; 
+
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
 const MAX_FREE_AUDITS = 3; 
 
@@ -54,66 +56,66 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "grandTotalValue": { "type": "STRING", "description": "Total Bid Price/Cost." },
         "industryTag": { 
             "type": "STRING", 
-            "description": "STRICTLY classify into ONE of these exact categories: 'Energy / Oil & Gas', 'Construction / Infrastructure', 'IT / SaaS / Technology', 'Healthcare / Medical', 'Logistics / Supply Chain', 'Consulting / Professional Services', 'Manufacturing / Industrial', 'Financial Services', or 'Other'."
+            "description": "STRICTLY classify into ONE: 'Energy / Oil & Gas', 'Construction / Infrastructure', 'IT / SaaS / Technology', 'Healthcare / Medical', 'Logistics / Supply Chain', 'Consulting / Professional Services', 'Manufacturing / Industrial', 'Financial Services', or 'Other'."
         },
         "primaryRisk": { "type": "STRING", "description": "Biggest deal-breaker risk." },
         "projectLocation": { "type": "STRING", "description": "Geographic location." },
         "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
         "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
-
-        // --- NEW STRATEGIC METRICS ---
+        
+        // --- GOD VIEW METRICS ---
         "buyingPersona": { 
             "type": "STRING", 
-            "description": "Classify the Buyer's psychology based on the RFQ tone. Options: 'PRICE-DRIVEN' (Focus on budget caps, L1) or 'VALUE-DRIVEN' (Focus on quality, partnership, innovation)." 
+            "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." 
         },
         "complexityScore": { 
             "type": "STRING", 
-            "description": "Rate the project complexity from 1/10 to 10/10 based on scope, timeline tightness, and technical requirements." 
+            "description": "Rate project complexity (e.g. '8/10')." 
         },
         "trapCount": { 
             "type": "STRING", 
-            "description": "Count the number of dangerous clauses found (e.g., Liquidated Damages, Unlimited Liability). Output format: 'X Critical Traps'." 
+            "description": "Count dangerous clauses (e.g. '3 Critical Traps')." 
         },
         "leadTemperature": { 
             "type": "STRING", 
-            "description": "Assess the probability of winning based on the Bidder's match to requirements. Options: 'HOT LEAD' (High Match), 'WARM LEAD' (Medium), 'COLD LEAD' (Low)." 
+            "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." 
         },
 
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
+            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. Explicitly restate the Client's primary objectives and pain points. PARAGRAPH 2: Validate the Bidder's solution and specific USP. If the bid lacks a USP, highlight this gap."
         },
         "persuasionScore": {
             "type": "NUMBER",
-            "description": "Score from 0-100 based on confidence, active voice, and clarity of the Bid."
+            "description": "Score from 0-100 based on confidence and clarity."
         },
         "toneAnalysis": {
             "type": "STRING",
-            "description": "One word describing the bid tone (e.g., 'Confident', 'Passive', 'Vague', 'Aggressive')."
+            "description": "One word describing tone (e.g., 'Confident', 'Passive')."
         },
         "weakWords": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List up to 3 weak words found (e.g., 'hope', 'believe', 'try')."
+            "description": "List 3 weak words found."
         },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points." }
             }
         },
         "legalRiskAlerts": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List dangerous legal clauses accepted without pushback."
+            "description": "List dangerous legal clauses accepted."
         },
         "submissionChecklist": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List of physical artifacts/attachments required by the RFQ."
+            "description": "List of physical artifacts/attachments required."
         },
 
         // --- CORE COMPLIANCE FIELDS ---
@@ -130,7 +132,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                     "category": { "type": "STRING", "enum": CATEGORY_ENUM },
                     "negotiationStance": { 
                         "type": "STRING", 
-                        "description": "If score < 1: Identify the deviation. Suggest a diplomatic framing to justify it (e.g., framing it as a value-add, safety measure, or efficiency gain). Do NOT invent facts about the user. Provide a template sentence."
+                        "description": "If score < 1: Write a diplomatic Sales Argument. Justify the deviation by highlighting value, safety, or efficiency. Provide a template sentence."
                     }
                 }
             }
@@ -480,7 +482,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, use
     );
 };
 
-// --- PAGE COMPONENTS (AuthPage First) ---
+// --- PAGE COMPONENTS (DEFINED BEFORE APP) ---
 
 const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
@@ -506,7 +508,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                 createdAt: Date.now()
             });
             
-            // FIX: Registration Flow - Sign Out immediately to prevent auto-redirect
+            // FIX: Sign Out immediately to prevent auto-redirect
             await signOut(auth);
             
             setLoginForm({ email: regForm.email, password: regForm.password });
@@ -525,7 +527,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles role-based redirect
+            // No direct navigation; App effect handles it
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -587,53 +589,20 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
   useEffect(() => {
     getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
-  
   const exportToCSV = (data, filename) => {
-    if (!data || !data.length) return;
     const csvContent = "data:text/csv;charset=utf-8," + Object.keys(data[0]).join(",") + "\n" + data.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
     const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
-  
   const handleVendorExport = () => {
-      const cleanVendorData = userList.map(u => ({
-          "Full Name": u.name || '',
-          "Designation": u.designation || '',
-          "Company": u.company || '',
-          "Email": u.email || '',
-          "Contact Number": u.phone || '',
-          "Role": u.role || 'USER'
-      }));
+      const cleanVendorData = userList.map(u => ({ "Full Name": u.name, "Designation": u.designation, "Company": u.company, "Email": u.email, "Contact Number": u.phone, "Role": u.role }));
       exportToCSV(cleanVendorData, 'vendor_registry.csv');
   };
-  
   const handleMarketExport = () => {
       const cleanMarketData = reportsHistory.map(r => ({
-          ID: r.id,
-          Project: r.projectTitle || r.rfqName,
-          "Scope of Work": r.rfqScopeSummary || 'N/A',
-          Vendor: userList.find(u => u.id === r.ownerId)?.name || 'Unknown',
-          Industry: r.industryTag || 'Unknown',
-          Value: r.grandTotalValue || 'Unknown',
-          Location: r.projectLocation || 'N/A',
-          Duration: r.contractDuration || 'N/A',
-          "Tech Stack": r.techKeywords || 'N/A',
-          Regulations: r.requiredCertifications || 'N/A',
-          "Risk Identified": r.primaryRisk || 'N/A',
-          "Buying Persona": r.buyingPersona || 'N/A',
-          "Complexity Score": r.complexityScore || 'N/A',
-          "Trap Count": r.trapCount || 'N/A',
-          "Lead Temperature": r.leadTemperature || 'N/A',
-          Score: getCompliancePercentage(r) + '%'
+          ID: r.id, Project: r.projectTitle || r.rfqName, "Scope of Work": r.rfqScopeSummary || 'N/A', Vendor: userList.find(u => u.id === r.ownerId)?.name, Industry: r.industryTag, Value: r.grandTotalValue, Location: r.projectLocation, Duration: r.contractDuration, "Tech Stack": r.techKeywords, Regulations: r.requiredCertifications, "Risk Identified": r.primaryRisk, "Buying Persona": r.buyingPersona, "Complexity Score": r.complexityScore, "Trap Count": r.trapCount, "Lead Temperature": r.leadTemperature, Score: getCompliancePercentage(r) + '%'
       }));
       exportToCSV(cleanMarketData, 'market_data.csv');
   };
-
-  // Helper for Report User
-  const getUserForReport = (ownerId) => {
-    const found = userList.find(u => u.id === ownerId);
-    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
-  };
-
   return (
     <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
@@ -644,14 +613,14 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
         </div>
       </div>
 
-      {/* METRIC LEGEND (FIXED: ADDED THIS SECTION) */}
+      {/* METRIC LEGEND */}
       <div className="bg-slate-700/30 border border-slate-600 rounded-xl p-4 no-print">
-         <div className="flex items-center mb-2"><HelpCircle className="w-4 h-4 mr-2 text-blue-400"/><h4 className="text-sm font-bold text-white">Metric Definitions (God View)</h4></div>
+         <div className="flex items-center mb-2"><Info className="w-4 h-4 mr-2 text-blue-400"/><h4 className="text-sm font-bold text-white">Metric Definitions (God View)</h4></div>
          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400">
-             <div><span className="text-blue-300 font-bold">Buying Persona:</span><br/>Is the client focused on Price (Budget) or Value (Innovation)?</div>
-             <div><span className="text-purple-300 font-bold">Complexity Score:</span><br/>1-10 rating of project difficulty & timeline tightness.</div>
-             <div><span className="text-orange-300 font-bold">Trap Count:</span><br/>Number of dangerous legal clauses found (e.g. Unlimited Liability).</div>
-             <div><span className="text-pink-300 font-bold">Lead Temperature:</span><br/>Win probability based on vendor suitability match.</div>
+             <div><span className="text-blue-300 font-bold">Buying Persona:</span><br/>Buyer priority: Cost vs. Innovation.</div>
+             <div><span className="text-purple-300 font-bold">Complexity Score:</span><br/>Difficulty based on timeline & scope.</div>
+             <div><span className="text-orange-300 font-bold">Trap Count:</span><br/>Count of dangerous legal clauses.</div>
+             <div><span className="text-pink-300 font-bold">Lead Temperature:</span><br/>Win probability based on match.</div>
          </div>
       </div>
 
@@ -698,6 +667,34 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
   );
 };
 
+const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
+    return (
+        <>
+            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
+                    <h2 className="text-2xl font-bold text-white">{title}</h2>
+                    <div className="text-right">
+                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
+                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
+                    </div>
+                </div>
+                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
+                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
+                </div>
+                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
+                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
+                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
+                </button>
+                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
+                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
+            </div>
+            {report && <ComplianceReport report={report} />}
+        </>
+    );
+};
+
 // --- APP COMPONENT (DEFINED LAST) ---
 const App = () => {
     const [currentPage, setCurrentPage] = useState(PAGE.HOME);
@@ -715,7 +712,7 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
+    // --- EFFECT 1: Auth State Listener ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -918,17 +915,19 @@ const App = () => {
         setSaving(true);
         try {
             const reportsRef = getReportsCollectionRef(db, userId);
+            // CRITICAL: Add ownerId to the document so Admin can read it via Collection Group Queries
             await addDoc(reportsRef, {
                 ...report,
                 rfqName: RFQFile?.name || 'Untitled',
                 bidName: BidFile?.name || 'Untitled',
                 timestamp: Date.now(),
                 role: role, 
+                ownerId: userId // <--- This is the key to the "God View" permissions
             });
             setErrorMessage("Report saved successfully!"); 
             setTimeout(() => setErrorMessage(null), 3000);
         } catch (error) {
-            setErrorMessage(`Failed to save: ${error.message}.`);
+            setErrorMessage(`Failed to save: ${error.message}. (Check Firebase Console > Firestore Database > Rules)`);
         } finally { setSaving(false); }
     }, [db, userId, report, RFQFile, BidFile]);
     
