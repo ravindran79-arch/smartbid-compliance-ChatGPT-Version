@@ -3,7 +3,7 @@ import {
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
     Save, Clock, Zap, ArrowLeft, Users, Briefcase, Layers, UserPlus, LogIn, Tag,
     Shield, User, HardDrive, Phone, Mail, Building, Trash2, Eye, DollarSign, Activity, 
-    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard, Info
+    Printer, Download, MapPin, Calendar, ThumbsUp, ThumbsDown, Gavel, Paperclip, Copy, Award, Lock, CreditCard
 } from 'lucide-react'; 
 
 // --- FIREBASE IMPORTS ---
@@ -65,7 +65,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a comprehensive Executive Summary. MANDATORY STRUCTURE: 1. Clearly state the Project Background/Requirement found in the RFQ (e.g. 'Regarding the Client's need for X...'). 2. State the Vendor's Proposed Solution. 3. State the Vendor's key value proposition. Ensure the tone is professional and bridges the gap between Requirement and Offer."
+            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. State the Client's specific project objectives and pain points, then map them to the Bidder's solution. PARAGRAPH 2: Validate the Bidder's suitability (USP, technology, experience). If the bid lacks a clear USP, highlight this gap explicitly in this paragraph."
         },
         "persuasionScore": {
             "type": "NUMBER",
@@ -110,7 +110,10 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                     "bidResponseSummary": { "type": "STRING" },
                     "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
                     "category": { "type": "STRING", "enum": CATEGORY_ENUM },
-                    "negotiationStance": { "type": "STRING" }
+                    "negotiationStance": { 
+                        "type": "STRING",
+                        "description": "If score < 1: Write a diplomatic Sales Argument from the BIDDER's perspective to the Client. Justify the deviation by highlighting value, safety, or standard practice. Do not sound like a compliance officer; sound like a partner negotiating a win-win."
+                    }
                 }
             }
         }
@@ -316,7 +319,7 @@ const ComplianceReport = ({ report }) => {
             {report.generatedExecutiveSummary && (
                 <div className="mb-8 p-6 bg-gradient-to-r from-blue-900/40 to-slate-800 rounded-xl border border-blue-500/30">
                     <h3 className="text-xl font-bold text-blue-200 mb-3 flex items-center"><Award className="w-5 h-5 mr-2 text-yellow-400"/> AI-Suggested Executive Summary</h3>
-                    <p className="text-slate-300 italic leading-relaxed border-l-4 border-blue-500 pl-4">"{report.generatedExecutiveSummary}"</p>
+                    <p className="text-slate-300 italic leading-relaxed border-l-4 border-blue-500 pl-4 whitespace-pre-line">"{report.generatedExecutiveSummary}"</p>
                 </div>
             )}
             <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -330,7 +333,17 @@ const ComplianceReport = ({ report }) => {
                     <div className="p-5 bg-slate-700/50 rounded-xl border border-purple-600/50 text-center relative overflow-hidden">
                         <p className="text-sm font-semibold text-white mb-1"><Activity className="w-4 h-4 inline mr-2 text-purple-400"/> Persuasion Score</p>
                         <div className="text-5xl font-extrabold text-purple-300">{report.persuasionScore}/100</div>
-                        <p className="text-xs text-slate-400 mt-3">Based on confidence, active voice, and clarity.</p>
+                        <div className="mt-3 flex flex-wrap justify-center gap-2">
+                            <span className="px-3 py-1 rounded-full bg-purple-900/50 border border-purple-500 text-xs text-purple-200 font-bold uppercase">
+                                Tone: {report.toneAnalysis || 'Neutral'}
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-3 text-center">Based on confidence, active voice, and clarity.</p>
+                        {report.weakWords && report.weakWords.length > 0 && (
+                            <p className="text-xs text-slate-400 mt-1 text-center">
+                                ⚠️ Weak words detected: <span className="italic text-red-300">{report.weakWords.join(", ")}</span>
+                            </p>
+                        )}
                     </div>
                 )}
             </div>
@@ -449,7 +462,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, use
     );
 };
 
-// --- PAGE COMPONENTS (Defined BEFORE App) ---
+// --- PAGE COMPONENTS (AuthPage First) ---
 
 const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
@@ -490,7 +503,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation; App effect handles it
+            // No direct navigation here; App effect handles role-based redirect
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -547,34 +560,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
     );
 };
 
-const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
-    return (
-        <>
-            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
-                    <h2 className="text-2xl font-bold text-white">{title}</h2>
-                    <div className="text-right">
-                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
-                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
-                    </div>
-                </div>
-                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
-                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
-                </div>
-                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
-                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
-                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
-                </button>
-                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
-                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
-            </div>
-            {report && <ComplianceReport report={report} />}
-        </>
-    );
-};
-
 const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory }) => {
   const [userList, setUserList] = useState([]);
   useEffect(() => {
@@ -594,6 +579,11 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
       }));
       exportToCSV(cleanMarketData, 'market_data.csv');
   };
+  const getUserForReport = (ownerId) => {
+    const found = userList.find(u => u.id === ownerId);
+    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
+  };
+
   return (
     <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
@@ -605,16 +595,13 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
       </div>
       <div className="pt-4 border-t border-slate-700">
         <div className="flex justify-between mb-4">
-            <div className="flex items-center"><h3 className="text-xl font-bold text-white mr-2"><Eye className="w-6 h-6 inline mr-2 text-amber-400" /> Live Market Feed</h3><span className="px-2 py-1 text-xs rounded bg-slate-700 text-slate-400 border border-slate-600 flex items-center"><Info className="w-3 h-3 mr-1"/> Legacy data may show N/A</span></div>
+            <div className="flex items-center"><h3 className="text-xl font-bold text-white mr-2"><Eye className="w-6 h-6 inline mr-2 text-amber-400" /> Live Market Feed</h3></div>
             <button onClick={handleMarketExport} className="text-xs bg-green-700 text-white px-3 py-1 rounded no-print"><Download className="w-3 h-3 mr-1"/> CSV</button>
         </div>
         <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
             <div key={item.id} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 cursor-default hover:bg-slate-900">
                 <div className="flex justify-between mb-2">
-                    <div>
-                        <h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName} <span className="text-xs font-normal text-slate-500 ml-2">{item.industryTag === undefined ? '(LEGACY DATA)' : ''}</span></h4>
-                        <p className="text-sm text-slate-400"><MapPin className="w-3 h-3 inline"/> {item.projectLocation || 'N/A'} • <Calendar className="w-3 h-3 inline"/> {item.contractDuration || 'N/A'}</p>
-                    </div>
+                    <div><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName}</h4><p className="text-sm text-slate-400"><MapPin className="w-3 h-3 inline"/> {item.projectLocation || 'N/A'} • <Calendar className="w-3 h-3 inline"/> {item.contractDuration || 'N/A'}</p></div>
                     <div className="text-right"><div className="text-xl font-bold text-green-400">{getCompliancePercentage(item)}%</div><span className="text-slate-500 text-xs">{new Date(item.timestamp).toLocaleDateString()}</span></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -666,6 +653,7 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
+    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -675,7 +663,13 @@ const App = () => {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
                     const userData = userDoc.exists() ? userDoc.data() : { role: 'USER' };
                     setCurrentUser({ uid: user.uid, ...userData });
-                    if (userData.role === 'ADMIN') { setCurrentPage(PAGE.ADMIN); } else { setCurrentPage(PAGE.COMPLIANCE_CHECK); }
+                    
+                    // SMART REDIRECT: ADMIN -> ADMIN DASHBOARD, USER -> CHECKER
+                    if (userData.role === 'ADMIN') {
+                        setCurrentPage(PAGE.ADMIN);
+                    } else {
+                        setCurrentPage(PAGE.COMPLIANCE_CHECK);
+                    }
                 } catch (error) {
                     console.error("Error fetching user profile:", error);
                     setCurrentUser({ uid: user.uid, role: 'USER' });
@@ -691,6 +685,7 @@ const App = () => {
         return () => unsubscribe();
     }, []);
 
+    // --- EFFECT 2: Usage Limits Listener ---
     useEffect(() => {
         if (db && userId) {
             const docRef = getUsageDocRef(db, userId);
@@ -710,6 +705,7 @@ const App = () => {
         }
     }, [userId]);
 
+    // --- EFFECT 3: Report History Listener ---
     useEffect(() => {
         if (!db || !currentUser) return;
         let unsubscribeSnapshot = null;
@@ -737,6 +733,7 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
+    // --- EFFECT 4: Load Libraries ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
@@ -750,9 +747,9 @@ const App = () => {
         };
         const loadAllLibraries = async () => {
             try {
-                if (!window.pdfjsLib) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
-                if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                if (!window.mammoth) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
+                if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
             } catch (e) { console.warn("Doc parsing libs failed."); }
         };
         loadAllLibraries();
@@ -806,6 +803,7 @@ const App = () => {
                     5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
                     6. ALERT 'legalRiskAlerts'.
                     7. CHECK 'submissionChecklist' (List artifacts).
+                    8. CLEAN UP TEXT: Fix any OCR/PDF spacing errors (e.g. 'Veri fi cation' -> 'Verification').
 
                     **TASK 3: Compliance Audit**
                     1. Identify mandatory requirements.
