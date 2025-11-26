@@ -32,7 +32,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
-// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
 const API_URL = '/api/analyze'; 
 
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
@@ -50,7 +49,6 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
     type: "OBJECT",
     description: "The complete compliance audit report with market intelligence and bid coaching data.",
     properties: {
-        // --- ADMIN / MARKET INTEL FIELDS ---
         "projectTitle": { "type": "STRING", "description": "Official Project Title from RFQ." },
         "rfqScopeSummary": { "type": "STRING", "description": "High-level scope summary from RFQ." },
         "grandTotalValue": { "type": "STRING", "description": "Total Bid Price/Cost." },
@@ -63,29 +61,13 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
         "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
-        
-        // --- GOD VIEW METRICS ---
-        "buyingPersona": { 
-            "type": "STRING", 
-            "description": "Classify Buyer: 'PRICE-DRIVEN' (Budget focus) or 'VALUE-DRIVEN' (Quality/Innovation focus)." 
-        },
-        "complexityScore": { 
-            "type": "STRING", 
-            "description": "Rate project complexity (e.g. '8/10')." 
-        },
-        "trapCount": { 
-            "type": "STRING", 
-            "description": "Count dangerous clauses (e.g. '3 Critical Traps')." 
-        },
-        "leadTemperature": { 
-            "type": "STRING", 
-            "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." 
-        },
-
-        // --- USER COACHING FIELDS ---
+        "buyingPersona": { "type": "STRING", "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." },
+        "complexityScore": { "type": "STRING", "description": "Rate project complexity (e.g. '8/10')." },
+        "trapCount": { "type": "STRING", "description": "Count dangerous clauses (e.g. '3 Critical Traps')." },
+        "leadTemperature": { "type": "STRING", "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." },
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ context. Explicitly restate the Client's project goals and pain points. PARAGRAPH 2: Validate the Bidder's specific suitability (USP, Tech, Experience). If the bid lacks a USP, highlight this gap."
+            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ context. Explicitly restate the Client's primary objectives and pain points. PARAGRAPH 2: Validate the Bidder's specific suitability (USP, Tech, Experience). If the bid lacks a USP, highlight this gap."
         },
         "persuasionScore": { "type": "NUMBER", "description": "Score 0-100 based on confidence and clarity." },
         "toneAnalysis": { "type": "STRING" },
@@ -99,8 +81,6 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         },
         "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
         "submissionChecklist": { "type": "ARRAY", "items": { "type": "STRING" } },
-
-        // --- CORE COMPLIANCE FIELDS ---
         "executiveSummary": { "type": "STRING", "description": "Audit summary." },
         "findings": {
             "type": "ARRAY",
@@ -232,7 +212,6 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
 const PaywallModal = ({ show, onClose, userId }) => {
     if (!show) return null;
     
-    // ✅ FINAL STRIPE LINK
     const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_cNi00i4JHdOmdTT8VJafS00"; 
 
     const handleUpgrade = () => {
@@ -541,7 +520,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles role-based redirect
+            // No direct navigation here; App effect handles it
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -732,7 +711,7 @@ const App = () => {
         setErrorMessage(null);
     };
 
-    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
+    // --- EFFECT 1: Auth State Listener ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -742,21 +721,15 @@ const App = () => {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
                     const userData = userDoc.exists() ? userDoc.data() : { role: 'USER' };
                     setCurrentUser({ uid: user.uid, ...userData });
-                    
-                    // SMART REDIRECT: ADMIN -> ADMIN DASHBOARD, USER -> CHECKER
-                    if (userData.role === 'ADMIN') {
-                        setCurrentPage(PAGE.ADMIN);
-                    } else {
-                        setCurrentPage(PAGE.COMPLIANCE_CHECK);
-                    }
+                    if (userData.role === 'ADMIN') { setCurrentPage(PAGE.ADMIN); } else { setCurrentPage(PAGE.COMPLIANCE_CHECK); }
                 } catch (error) {
                     console.error("Error fetching user profile:", error);
                     setCurrentUser({ uid: user.uid, role: 'USER' });
                     setCurrentPage(PAGE.COMPLIANCE_CHECK);
                 }
             } else {
-                // FIX: WIPE STATE ON LOGOUT
-                setUserId(null); setCurrentUser(null); setReportsHistory([]); setReport(null); setRFQFile(null); setBidFile(null); setCurrentPage(PAGE.HOME);
+                // Fallback if auth state clears unexpectedly
+                setCurrentPage(PAGE.HOME);
             }
             setIsAuthReady(true);
         });
@@ -811,7 +784,7 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
-    // --- EFFECT 4: Load Libraries (Robust Check) ---
+    // --- EFFECT 4: Load Libraries ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
@@ -832,7 +805,6 @@ const App = () => {
         };
         loadAllLibraries();
         
-        // FIX: CHECK FOR PAYMENT SUCCESS REDIRECT
         const params = new URLSearchParams(window.location.search);
         if (params.get('client_reference_id') || params.get('payment_success')) {
              window.history.replaceState({}, document.title, "/");
@@ -995,15 +967,13 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100">
-<style>{`
+            <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&display=swap');
                 .font-body, .font-body * { font-family: 'Lexend', sans-serif !important; }
                 input[type="file"] { display: block; width: 100%; }
                 input[type="file"]::file-selector-button { background-color: #f59e0b; color: #1e293b; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
                 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
-                
-                /* --- PRINT FIX --- */
                 @media print { 
                     body * { visibility: hidden; } /* Hide everything by default */
                     
@@ -1018,6 +988,11 @@ const App = () => {
                     .no-print { display: none !important; } 
                 }
             `}</style>
+            <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
+            <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} userId={userId} />
+        </div>
+    );
+};
 
 // --- TOP LEVEL EXPORT ---
 const MainApp = App;
