@@ -3,24 +3,29 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
-
-// --- FIREBASE ADMIN SETUP ---
-// We need the Admin SDK to write to the database from the server (Bypassing client rules)
 const admin = require('firebase-admin');
 
-// Construct the credentials object from environment variables
-// Note: In production, we use a Service Account. For this MVP, we will use a simpler
-// method or rely on the fact that we are just flipping a boolean.
-// Ideally, you would download a serviceAccountKey.json from Firebase Console -> Project Settings -> Service Accounts
-// and set it as an environment variable.
-// FOR NOW: We will skip the Admin SDK strictly for the "MVP" phase and focus on the Stripe Hook.
-// REAL WORLD: You would need `firebase-admin` initialized here.
+// --- 1. INITIALIZE FIREBASE ADMIN (THE ROBOT) ---
+// This allows the server to write to the database without permission rules
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("✅ Firebase Admin Initialized");
+    } catch (error) {
+        console.error("❌ Failed to parse FIREBASE_SERVICE_ACCOUNT:", error);
+    }
+} else {
+    console.warn("⚠️ FIREBASE_SERVICE_ACCOUNT not found. Auto-unlock will not work.");
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- MIDDLEWARE ---
-// We need the raw body for Stripe Webhook verification
+// We need the raw body for Stripe verification
 app.use(express.json({
   limit: '10mb',
   verify: (req, res, buf) => {
@@ -39,13 +44,10 @@ app.post('/api/analyze', async (req, res) => {
     try {
         const { contents, systemInstruction, generationConfig } = req.body;
         
-        if (!GOOGLE_API_KEY) {
-            throw new Error("Server missing GOOGLE_API_KEY");
-        }
+        if (!GOOGLE_API_KEY) throw new Error("Server missing GOOGLE_API_KEY");
 
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`;
 
-        // Native fetch (Node 18+)
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -53,11 +55,7 @@ app.post('/api/analyze', async (req, res) => {
         });
 
         const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error?.message || 'Google API Error');
-        }
-
+        if (!response.ok) throw new Error(data.error?.message || 'Google API Error');
         res.json(data);
 
     } catch (error) {
@@ -66,56 +64,53 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-// --- STRIPE WEBHOOK ROUTE ---
+// --- STRIPE WEBHOOK ROUTE (AUTO-UNLOCKER) ---
 app.post('/api/webhook', async (req, res) => {
     const sig = req.headers['stripe-signature'];
 
     if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
-        console.error("Missing Stripe Keys");
         return res.status(500).send("Server misconfigured");
     }
 
-    // Initialize Stripe Library
     const stripe = require('stripe')(STRIPE_SECRET_KEY);
-
     let event;
 
     try {
-        // Verify the event came from Stripe
         event = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET);
     } catch (err) {
-        console.error(`Webhook Signature Error: ${err.message}`);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
+        const userId = session.client_reference_id; // The ID we passed from React
         
-        // 1. Get the User ID from the Client Reference (We will add this to the frontend link later)
-        const userId = session.client_reference_id;
-        const customerEmail = session.customer_details?.email;
+        console.log(`💰 Payment Verified for User: ${userId}`);
 
-        console.log(`💰 Payment Success! User: ${userId}, Email: ${customerEmail}`);
-
-        if (userId) {
-             // --- DATABASE UNLOCK LOGIC ---
-             // Note: Since we haven't set up the full Firebase Admin SDK in this file yet,
-             // we will log this success. In a full production app, you would do:
-             // await admin.firestore().collection('users').doc(userId).collection('usage_limits').doc('main_tracker').update({ isSubscribed: true });
-             
-             // For this MVP step, we acknowledge receipt.
-             console.log(`ACTION REQUIRED: Unlock account for ${userId}`);
+        if (userId && admin.apps.length) {
+            try {
+                // 1. Flip the switch in Firestore
+                await admin.firestore()
+                    .collection('users')
+                    .doc(userId)
+                    .collection('usage_limits')
+                    .doc('main_tracker')
+                    .set({ isSubscribed: true }, { merge: true });
+                
+                console.log(`✅ AUTOMATION SUCCESS: Account unlocked for ${userId}`);
+            } catch (dbError) {
+                console.error("❌ Database Write Failed:", dbError);
+            }
+        } else {
+             console.error("❌ Cannot unlock: Missing UserID or Admin SDK not ready.");
         }
     }
 
-    // Return a 200 response to acknowledge receipt of the event
     res.send();
 });
 
 // --- SERVE FRONTEND ---
 app.use(express.static(path.join(__dirname, 'dist')));
-
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
