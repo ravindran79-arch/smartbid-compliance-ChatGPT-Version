@@ -62,40 +62,58 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
 
+        // --- NEW STRATEGIC METRICS ---
+        "buyingPersona": { 
+            "type": "STRING", 
+            "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." 
+        },
+        "complexityScore": { 
+            "type": "STRING", 
+            "description": "Rate project complexity (e.g. '8/10')." 
+        },
+        "trapCount": { 
+            "type": "STRING", 
+            "description": "Count dangerous clauses (e.g. '3 Critical Traps')." 
+        },
+        "leadTemperature": { 
+            "type": "STRING", 
+            "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." 
+        },
+
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. State the Client's specific project objectives and pain points, then map them to the Bidder's solution. PARAGRAPH 2: Validate the Bidder's suitability (USP, technology, experience). If the bid lacks a clear USP, highlight this gap explicitly in this paragraph."
+            "description": "Write a 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. Explicitly restate the Client's primary objectives/pain points and map them to the solution. PARAGRAPH 2: Validate the Bidder's suitability (USP, Tech, Experience). If USP is missing, highlight this gap."
         },
         "persuasionScore": {
             "type": "NUMBER",
-            "description": "Score from 0-100 based on confidence, active voice, and clarity of the Bid."
+            "description": "Score from 0-100 based on confidence and clarity."
         },
         "toneAnalysis": {
             "type": "STRING",
-            "description": "One word describing the bid tone (e.g., 'Confident', 'Passive', 'Vague', 'Aggressive')."
+            "description": "One word describing tone (e.g., 'Confident', 'Passive')."
         },
         "weakWords": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List up to 3 weak words found (e.g., 'hope', 'believe', 'try')."
+            "description": "List 3 weak words found."
         },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points of the proposal." },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points or risks in the proposal." }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points." }
             }
         },
         "legalRiskAlerts": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List dangerous legal clauses accepted without pushback."
+            "description": "List dangerous legal clauses accepted."
         },
         "submissionChecklist": {
             "type": "ARRAY",
             "items": { "type": "STRING" },
-            "description": "List of physical artifacts/attachments required by the RFQ."
+            "description": "List of physical artifacts/attachments required."
         },
 
         // --- CORE COMPLIANCE FIELDS ---
@@ -111,14 +129,14 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                     "flag": { "type": "STRING", "enum": ["COMPLIANT", "PARTIAL", "NON-COMPLIANT"] },
                     "category": { "type": "STRING", "enum": CATEGORY_ENUM },
                     "negotiationStance": { 
-                        "type": "STRING",
-                        "description": "If score < 1: Write a diplomatic Sales Argument from the BIDDER's perspective to the Client. Justify the deviation by highlighting value, safety, or standard practice. Do not sound like a compliance officer; sound like a partner negotiating a win-win."
+                        "type": "STRING", 
+                        "description": "Write a diplomatic Sales Argument. Justify the deviation by highlighting value or standard practice. Do not sound like a compliance officer; sound like a partner."
                     }
                 }
             }
         }
     },
-    "required": ["projectTitle", "rfqScopeSummary", "grandTotalValue", "industryTag", "primaryRisk", "generatedExecutiveSummary", "persuasionScore", "toneAnalysis", "procurementVerdict", "legalRiskAlerts", "submissionChecklist", "executiveSummary", "findings"]
+    "required": ["projectTitle", "rfqScopeSummary", "grandTotalValue", "industryTag", "primaryRisk", "generatedExecutiveSummary", "persuasionScore", "toneAnalysis", "procurementVerdict", "legalRiskAlerts", "submissionChecklist", "executiveSummary", "findings", "buyingPersona", "complexityScore", "trapCount", "leadTemperature"]
 };
 
 // --- UTILS ---
@@ -203,7 +221,8 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-// --- LEAF COMPONENTS ---
+// --- 1. HELPER COMPONENTS ---
+
 const handleFileChange = (e, setFile, setErrorMessage) => {
     if (e.target.files.length > 0) {
         setFile(e.target.files[0]);
@@ -305,7 +324,7 @@ const FileUploader = ({ title, file, setFile, color, requiredText }) => (
     </div>
 );
 
-// --- MID-LEVEL COMPONENTS ---
+// --- 2. MID-LEVEL COMPONENTS ---
 
 const ComplianceReport = ({ report }) => {
     const findings = report.findings || []; 
@@ -462,7 +481,7 @@ const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, use
     );
 };
 
-// --- PAGE COMPONENTS (AuthPage First) ---
+// --- 3. PAGE COMPONENTS ---
 
 const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) => {
     const [regForm, setRegForm] = useState({ name: '', designation: '', company: '', email: '', phone: '', password: '' });
@@ -503,7 +522,6 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles role-based redirect
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -579,11 +597,6 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
       }));
       exportToCSV(cleanMarketData, 'market_data.csv');
   };
-  const getUserForReport = (ownerId) => {
-    const found = userList.find(u => u.id === ownerId);
-    return found ? `${found.name} (${found.company})` : `User ID: ${ownerId}`;
-  };
-
   return (
     <div id="admin-print-area" className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 space-y-8">
       <div className="flex justify-between items-center border-b border-slate-700 pb-4">
@@ -601,7 +614,7 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
         <div className="space-y-4">{reportsHistory.slice(0, 15).map(item => (
             <div key={item.id} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700 cursor-default hover:bg-slate-900">
                 <div className="flex justify-between mb-2">
-                    <div><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName}</h4><p className="text-sm text-slate-400"><MapPin className="w-3 h-3 inline"/> {item.projectLocation || 'N/A'} • <Calendar className="w-3 h-3 inline"/> {item.contractDuration || 'N/A'}</p></div>
+                    <div><h4 className="text-lg font-bold text-white">{item.projectTitle || item.rfqName} <span className="text-xs font-normal text-slate-500 ml-2">{item.industryTag === undefined ? '(LEGACY DATA)' : ''}</span></h4><p className="text-sm text-slate-400"><MapPin className="w-3 h-3 inline"/> {item.projectLocation || 'N/A'} • <Calendar className="w-3 h-3 inline"/> {item.contractDuration || 'N/A'}</p></div>
                     <div className="text-right"><div className="text-xl font-bold text-green-400">{getCompliancePercentage(item)}%</div><span className="text-slate-500 text-xs">{new Date(item.timestamp).toLocaleDateString()}</span></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -636,7 +649,35 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
   );
 };
 
-// --- APP COMPONENT (DEFINED LAST) ---
+const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
+    return (
+        <>
+            <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
+                    <h2 className="text-2xl font-bold text-white">{title}</h2>
+                    <div className="text-right">
+                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
+                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
+                    </div>
+                </div>
+                <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <FileUploader title="RFQ Document" file={RFQFile} setFile={(e) => handleFileChange(e, setRFQFile, setErrorMessage)} color="blue" requiredText="Mandatory Requirements" />
+                    <FileUploader title="Bid Proposal" file={BidFile} setFile={(e) => handleFileChange(e, setBidFile, setErrorMessage)} color="green" requiredText="Response Document" />
+                </div>
+                {errorMessage && <div className="mt-6 p-4 bg-red-900/40 text-red-300 border border-red-700 rounded-xl flex items-center"><AlertTriangle className="w-5 h-5 mr-3"/>{errorMessage}</div>}
+                <button onClick={() => handleAnalyze('BIDDER')} disabled={loading || !RFQFile || !BidFile} className="mt-8 w-full flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl text-slate-900 bg-amber-500 hover:bg-amber-400 disabled:opacity-50">
+                    {loading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <Send className="h-6 w-6 mr-3" />} {loading ? 'ANALYZING...' : 'RUN COMPLIANCE AUDIT'}
+                </button>
+                {report && userId && <button onClick={() => saveReport('BIDDER')} disabled={saving} className="mt-4 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-50"><Save className="h-5 w-5 mr-2" /> {saving ? 'SAVING...' : 'SAVE REPORT'}</button>}
+                {(report || userId) && <button onClick={() => setCurrentPage(PAGE.HISTORY)} className="mt-2 w-full flex items-center justify-center px-8 py-3 text-md font-semibold rounded-xl text-white bg-slate-700/80 hover:bg-slate-700"><List className="h-5 w-5 mr-2" /> VIEW HISTORY</button>}
+            </div>
+            {report && <ComplianceReport report={report} />}
+        </>
+    );
+};
+
+// --- 4. APP COMPONENT (The Brain - Defined LAST) ---
 const App = () => {
     const [currentPage, setCurrentPage] = useState(PAGE.HOME);
     const [errorMessage, setErrorMessage] = useState(null);
@@ -653,7 +694,7 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
+    // --- EFFECT 1: Auth State Listener ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -663,13 +704,7 @@ const App = () => {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
                     const userData = userDoc.exists() ? userDoc.data() : { role: 'USER' };
                     setCurrentUser({ uid: user.uid, ...userData });
-                    
-                    // SMART REDIRECT: ADMIN -> ADMIN DASHBOARD, USER -> CHECKER
-                    if (userData.role === 'ADMIN') {
-                        setCurrentPage(PAGE.ADMIN);
-                    } else {
-                        setCurrentPage(PAGE.COMPLIANCE_CHECK);
-                    }
+                    if (userData.role === 'ADMIN') { setCurrentPage(PAGE.ADMIN); } else { setCurrentPage(PAGE.COMPLIANCE_CHECK); }
                 } catch (error) {
                     console.error("Error fetching user profile:", error);
                     setCurrentUser({ uid: user.uid, role: 'USER' });
@@ -733,10 +768,11 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
-    // --- EFFECT 4: Load Libraries ---
+    // --- EFFECT 4: Load Libraries (Robust Check) ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
+                // Robust check: Do not load if already exists
                 if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
                 const script = document.createElement('script');
                 script.src = src;
@@ -747,10 +783,15 @@ const App = () => {
         };
         const loadAllLibraries = async () => {
             try {
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
-                if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
-            } catch (e) { console.warn("Doc parsing libs failed."); }
+                // Check window objects to prevent double loading warnings
+                if (!window.pdfjsLib) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
+                if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                }
+                if (!window.mammoth) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
+            } catch (e) { 
+                console.warn("Doc parsing libs warning (safe to ignore if features work):", e); 
+            }
         };
         loadAllLibraries();
     }, []); 
