@@ -32,9 +32,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- CONSTANTS ---
-// SECURITY UPDATE: Point to our own backend proxy instead of Google directly.
-const API_URL = '/api/analyze'; 
-
+const API_URL = '/api/analyze'; // Proxy Server (Bodyguard Principle)
 const CATEGORY_ENUM = ["LEGAL", "FINANCIAL", "TECHNICAL", "TIMELINE", "REPORTING", "ADMINISTRATIVE", "OTHER"];
 const MAX_FREE_AUDITS = 3; 
 
@@ -63,24 +61,38 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
         "contractDuration": { "type": "STRING", "description": "Proposed timeline." },
         "techKeywords": { "type": "STRING", "description": "Top 3 technologies/materials." },
         "requiredCertifications": { "type": "STRING", "description": "Mandatory certs (ISO, etc.)." },
-        "buyingPersona": { "type": "STRING", "description": "Classify Buyer: 'PRICE-DRIVEN' or 'VALUE-DRIVEN'." },
-        "complexityScore": { "type": "STRING", "description": "Rate project complexity (e.g. '8/10')." },
-        "trapCount": { "type": "STRING", "description": "Count dangerous clauses (e.g. '3 Critical Traps')." },
-        "leadTemperature": { "type": "STRING", "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." },
+        
+        // --- GOD VIEW METRICS ---
+        "buyingPersona": { 
+            "type": "STRING", 
+            "description": "Classify Buyer: 'PRICE-DRIVEN' (Budget focus) or 'VALUE-DRIVEN' (Quality/Innovation focus)." 
+        },
+        "complexityScore": { 
+            "type": "STRING", 
+            "description": "Rate project complexity (e.g. '8/10')." 
+        },
+        "trapCount": { 
+            "type": "STRING", 
+            "description": "Count dangerous clauses (e.g. '3 Critical Traps')." 
+        },
+        "leadTemperature": { 
+            "type": "STRING", 
+            "description": "Rate win probability: 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'." 
+        },
 
         // --- USER COACHING FIELDS ---
         "generatedExecutiveSummary": {
             "type": "STRING",
-            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. Explicitly restate the Client's primary objectives and pain points. PARAGRAPH 2: Validate the Bidder's solution and specific USP. If the bid lacks a USP, highlight this gap."
+            "description": "Write a professional 2-PARAGRAPH Executive Summary. PARAGRAPH 1: Mirror the RFQ. Explicitly restate the Client's primary objectives and pain points. PARAGRAPH 2: Validate the Bidder's specific suitability (USP, Tech, Experience). If the bid lacks a USP, highlight this gap."
         },
-        "persuasionScore": { "type": "NUMBER" },
+        "persuasionScore": { "type": "NUMBER", "description": "Score 0-100 based on confidence and clarity." },
         "toneAnalysis": { "type": "STRING" },
         "weakWords": { "type": "ARRAY", "items": { "type": "STRING" } },
         "procurementVerdict": {
             "type": "OBJECT",
             "properties": {
-                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" } },
-                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" } }
+                "winningFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 strong points." },
+                "losingFactors": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Top 3 weak points." }
             }
         },
         "legalRiskAlerts": { "type": "ARRAY", "items": { "type": "STRING" } },
@@ -100,7 +112,7 @@ const COMPREHENSIVE_REPORT_SCHEMA = {
                     "category": { "type": "STRING", "enum": CATEGORY_ENUM },
                     "negotiationStance": { 
                         "type": "STRING", 
-                        "description": "SCORE < 1 ONLY: Act as a Sales Diplomat. 1. Identify the deviation. 2. Suggest a 'Pivot Strategy' (e.g. 'Pivot focus to Safety Benefits' or 'Highlight Cost Savings'). 3. Provide a specific justification script the salesperson can use to explain WHY this deviation is actually acceptable or beneficial. Do NOT sound like a compliance officer."
+                        "description": "If score < 1: Act as a Sales Diplomat. 1. Identify deviation. 2. Suggest a 'Pivot Strategy' (e.g. 'Pivot to Safety'). 3. Provide a template script justifying why this deviation is acceptable/beneficial. Do NOT invent facts."
                     }
                 }
             }
@@ -215,16 +227,13 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
     </div>
 );
 
-// --- UPDATED PAYWALL MODAL ---
 const PaywallModal = ({ show, onClose, userId }) => {
     if (!show) return null;
-
-    // ✅ YOUR REAL STRIPE LINK IS HERE
+    
+    // ✅ STRIPE LINK (CONSTITUTION COMPLIANT)
     const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_cNi00i4JHdOmdTT8VJafS00"; 
 
     const handleUpgrade = () => {
-        // We append the userId to the URL so Stripe knows exactly WHO is paying.
-        // This allows the system to automatically unlock the account later.
         if (userId) {
             window.location.href = `${STRIPE_PAYMENT_LINK}?client_reference_id=${userId}`;
         } else {
@@ -440,13 +449,16 @@ const ComplianceRanking = ({ reportsHistory, loadReportFromHistory, deleteReport
     );
 };
 
-const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, userId, setCurrentPage, currentUser, deleteReport }) => { 
+const ReportHistory = ({ reportsHistory, loadReportFromHistory, isAuthReady, userId, setCurrentPage, currentUser, deleteReport, handleLogout }) => { 
     if (!isAuthReady || !userId) return <div className="text-center text-red-400">Please login to view history.</div>;
     return (
         <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
             <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
                 <h2 className="text-xl font-bold text-white flex items-center"><Clock className="w-5 h-5 mr-2 text-amber-500"/> Saved Report History ({reportsHistory.length})</h2>
-                <button onClick={() => setCurrentPage(PAGE.COMPLIANCE_CHECK)} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1"/> Back</button>
+                <div className="flex gap-2">
+                    <button onClick={() => setCurrentPage(PAGE.COMPLIANCE_CHECK)} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1"/> Back</button>
+                    <button onClick={handleLogout} className="text-sm text-slate-400 hover:text-red-400 flex items-center ml-4">Logout</button>
+                </div>
             </div>
             <ComplianceRanking reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} currentUser={currentUser} />
             <h3 className="text-lg font-bold text-white mt-8 mb-4 border-b border-slate-700 pb-2">All Reports</h3>
@@ -491,7 +503,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                 createdAt: Date.now()
             });
             
-            // FIX: Sign Out immediately to prevent auto-redirect
+            // CONSTITUTION: Immediately sign out to prevent auto-redirect
             await signOut(auth);
             
             setLoginForm({ email: regForm.email, password: regForm.password });
@@ -510,7 +522,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles it
+            // Navigation handled by App's Auth Listener
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -567,7 +579,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
     );
 };
 
-const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory }) => {
+const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadReportFromHistory, handleLogout }) => {
   const [userList, setUserList] = useState([]);
   useEffect(() => {
     getDocs(collection(getFirestore(), 'users')).then(snap => setUserList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -592,21 +604,11 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
         <h2 className="text-3xl font-bold text-white flex items-center"><Shield className="w-8 h-8 mr-3 text-red-400" /> Admin Market Intel</h2>
         <div className="flex space-x-3 no-print">
             <button onClick={() => window.print()} className="text-sm text-slate-400 hover:text-white bg-slate-700 px-3 py-2 rounded-lg"><Printer className="w-4 h-4 mr-2" /> Print</button>
-            <button onClick={() => setCurrentPage('HOME')} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
+            <button onClick={handleLogout} className="text-sm text-slate-400 hover:text-amber-500 flex items-center"><ArrowLeft className="w-4 h-4 mr-1" /> Logout</button>
         </div>
       </div>
 
-      {/* METRIC LEGEND */}
-      <div className="bg-slate-700/30 border border-slate-600 rounded-xl p-4 no-print">
-         <div className="flex items-center mb-2"><Info className="w-4 h-4 mr-2 text-blue-400"/><h4 className="text-sm font-bold text-white">Metric Definitions (God View)</h4></div>
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400">
-             <div><span className="text-blue-300 font-bold">Buying Persona:</span><br/>Buyer priority: Cost vs. Innovation.</div>
-             <div><span className="text-purple-300 font-bold">Complexity Score:</span><br/>Difficulty based on timeline & scope.</div>
-             <div><span className="text-orange-300 font-bold">Trap Count:</span><br/>Count of dangerous legal clauses.</div>
-             <div><span className="text-pink-300 font-bold">Lead Temperature:</span><br/>Win probability based on match.</div>
-         </div>
-      </div>
-
+      <div className="bg-slate-700/30 border border-slate-600 rounded-xl p-4 no-print"><div className="flex items-center mb-2"><Info className="w-4 h-4 mr-2 text-blue-400"/><h4 className="text-sm font-bold text-white">Metric Definitions (God View)</h4></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400"><div><span className="text-blue-300 font-bold">Buying Persona:</span><br/>Buyer priority: Cost vs. Innovation.</div><div><span className="text-purple-300 font-bold">Complexity Score:</span><br/>Difficulty based on timeline & scope.</div><div><span className="text-orange-300 font-bold">Trap Count:</span><br/>Count of dangerous legal clauses.</div><div><span className="text-pink-300 font-bold">Lead Temperature:</span><br/>Win probability based on match.</div></div></div>
       <div className="pt-4 border-t border-slate-700">
         <div className="flex justify-between mb-4">
             <h3 className="text-xl font-bold text-white flex items-center"><Eye className="w-6 h-6 mr-2 text-amber-400" /> Live Market Feed</h3>
@@ -650,15 +652,17 @@ const AdminDashboard = ({ setCurrentPage, currentUser, reportsHistory, loadRepor
   );
 };
 
-const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId }) => {
+const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentUser, loading, RFQFile, BidFile, setRFQFile, setBidFile, generateTestData, errorMessage, report, saveReport, saving, setErrorMessage, userId, handleLogout }) => {
     return (
         <>
             <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
                     <h2 className="text-2xl font-bold text-white">{title}</h2>
                     <div className="text-right">
-                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits}/{MAX_FREE_AUDITS}</span></p>}
-                        <button onClick={() => setCurrentPage(PAGE.HOME)} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
+                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : 
+                         usageLimits.isSubscribed ? <p className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500 text-amber-400 text-xs font-bold inline-flex items-center"><Award className="w-3 h-3 mr-1" /> SmartBids Pro Mode</p> :
+                         <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits.bidderChecks >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits.bidderChecks}/{MAX_FREE_AUDITS}</span></p>}
+                        <button onClick={handleLogout} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
                     </div>
                 </div>
                 <button onClick={generateTestData} disabled={loading} className="mb-6 w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-900 bg-teal-400 hover:bg-teal-300 disabled:opacity-30"><Zap className="h-5 w-5 mr-2" /> LOAD DEMO DOCUMENTS</button>
@@ -695,7 +699,21 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // --- EFFECT 1: Auth State Listener (Smart Redirect) ---
+    const handleLogout = async () => {
+        // CONSTITUTION: CLEAN SLATE PROTOCOL
+        await signOut(auth);
+        setUserId(null);
+        setCurrentUser(null);
+        setReportsHistory([]);
+        setReport(null);
+        setRFQFile(null);
+        setBidFile(null);
+        setUsageLimits({ initiatorChecks: 0, bidderChecks: 0, isSubscribed: false });
+        setCurrentPage(PAGE.HOME);
+        setErrorMessage(null);
+    };
+
+    // --- EFFECT 1: Auth State Listener ---
     useEffect(() => {
         if (!auth) return;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -706,7 +724,7 @@ const App = () => {
                     const userData = userDoc.exists() ? userDoc.data() : { role: 'USER' };
                     setCurrentUser({ uid: user.uid, ...userData });
                     
-                    // SMART REDIRECT: ADMIN -> ADMIN DASHBOARD, USER -> CHECKER
+                    // SMART REDIRECT
                     if (userData.role === 'ADMIN') {
                         setCurrentPage(PAGE.ADMIN);
                     } else {
@@ -718,13 +736,7 @@ const App = () => {
                     setCurrentPage(PAGE.COMPLIANCE_CHECK);
                 }
             } else {
-                // --- FIX: WIPE STATE ON LOGOUT ---
-                setUserId(null);
-                setCurrentUser(null);
-                setReportsHistory([]); // Clear history
-                setReport(null); // Clear current report
-                setRFQFile(null);
-                setBidFile(null);
+                // Fallback if auth state clears unexpectedly, though handleLogout does the heavy lifting
                 setCurrentPage(PAGE.HOME);
             }
             setIsAuthReady(true);
@@ -780,11 +792,10 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
-    // --- EFFECT 4: Load Libraries (Robust Check) ---
+    // --- EFFECT 4: Load Libraries ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
-                // Robust check: Do not load if already exists
                 if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
                 const script = document.createElement('script');
                 script.src = src;
@@ -795,17 +806,18 @@ const App = () => {
         };
         const loadAllLibraries = async () => {
             try {
-                // Check window objects to prevent double loading warnings
                 if (!window.pdfjsLib) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js");
-                if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-                }
+                if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
                 if (!window.mammoth) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.4.15/mammoth.browser.min.js");
-            } catch (e) { 
-                console.warn("Doc parsing libs warning (safe to ignore if features work):", e); 
-            }
+            } catch (e) { console.warn("Doc parsing libs warning:", e); }
         };
         loadAllLibraries();
+        
+        // Check for Payment Success Redirect
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('client_reference_id')) {
+             window.history.replaceState({}, document.title, "/");
+        }
     }, []); 
 
     const incrementUsage = async () => {
@@ -841,12 +853,10 @@ const App = () => {
                     1. EXTRACT 'projectTitle', 'grandTotalValue', 'primaryRisk', 'rfqScopeSummary'.
                     2. EXTRACT 'projectLocation', 'contractDuration', 'techKeywords', 'requiredCertifications'.
                     3. CLASSIFY 'industryTag': STRICTLY choose one: 'Energy / Oil & Gas', 'Construction / Infrastructure', 'IT / SaaS / Technology', 'Healthcare / Medical', 'Logistics / Supply Chain', 'Consulting / Professional Services', 'Manufacturing / Industrial', 'Financial Services', or 'Other'.
-                    
-                    // --- NEW STRATEGIC METRICS ---
-                    4. CLASSIFY 'buyingPersona': 'PRICE-DRIVEN' or 'VALUE-DRIVEN' based on RFQ tone.
-                    5. SCORE 'complexityScore': 1-10 (String format e.g. '8/10').
-                    6. COUNT 'trapCount': Number of dangerous clauses (e.g. '3 Critical Traps').
-                    7. ASSESS 'leadTemperature': 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD' based on win probability.
+                    4. CLASSIFY 'buyingPersona': 'PRICE-DRIVEN' or 'VALUE-DRIVEN'.
+                    5. SCORE 'complexityScore': 1-10 (String).
+                    6. COUNT 'trapCount': Number of dangerous clauses.
+                    7. ASSESS 'leadTemperature': 'HOT LEAD', 'WARM LEAD', or 'COLD LEAD'.
 
                     **TASK 2: Bid Coaching**
                     1. GENERATE 'generatedExecutiveSummary': MANDATORY: Start by referencing the specific Project Background from the RFQ, then transition to the Vendor's solution and value proposition.
@@ -856,12 +866,13 @@ const App = () => {
                     5. JUDGE 'procurementVerdict': List 3 'winningFactors' and 3 'losingFactors'.
                     6. ALERT 'legalRiskAlerts'.
                     7. CHECK 'submissionChecklist' (List artifacts).
-                    8. CLEAN UP TEXT: Fix any OCR/PDF spacing errors (e.g. 'Veri fi cation' -> 'Verification').
+                    8. CLEAN UP TEXT: Fix any OCR/PDF spacing errors.
 
                     **TASK 3: Compliance Audit**
                     1. Identify mandatory requirements.
                     2. Score (1/0.5/0).
                     3. CRITICAL: Copy EXACT text to 'requirementFromRFQ'.
+                    4. NEGOTIATION: If score < 1, write a diplomatic Sales Argument. Suggest a 'Pivot Strategy' (e.g. Safety/Efficiency). Provide a specific justification script. Do not invent facts.
                     
                     Output JSON.`
                 }]
@@ -905,19 +916,18 @@ const App = () => {
         setSaving(true);
         try {
             const reportsRef = getReportsCollectionRef(db, userId);
-            // CRITICAL: Add ownerId to the document so Admin can read it via Collection Group Queries
             await addDoc(reportsRef, {
                 ...report,
                 rfqName: RFQFile?.name || 'Untitled',
                 bidName: BidFile?.name || 'Untitled',
                 timestamp: Date.now(),
                 role: role, 
-                ownerId: userId // <--- This is the key to the "God View" permissions
+                ownerId: userId 
             });
             setErrorMessage("Report saved successfully!"); 
             setTimeout(() => setErrorMessage(null), 3000);
         } catch (error) {
-            setErrorMessage(`Failed to save: ${error.message}. (Check Firebase Console > Firestore Database > Rules)`);
+            setErrorMessage(`Failed to save: ${error.message}.`);
         } finally { setSaving(false); }
     }, [db, userId, report, RFQFile, BidFile]);
     
@@ -952,12 +962,12 @@ const App = () => {
                     currentUser={currentUser} loading={loading} RFQFile={RFQFile} BidFile={BidFile}
                     setRFQFile={setRFQFile} setBidFile={setBidFile} generateTestData={generateTestData} 
                     errorMessage={errorMessage} report={report} saveReport={saveReport} saving={saving}
-                    setErrorMessage={setErrorMessage} userId={userId} 
+                    setErrorMessage={setErrorMessage} userId={userId} handleLogout={handleLogout}
                 />;
             case PAGE.ADMIN:
-                return <AdminDashboard setCurrentPage={setCurrentPage} currentUser={currentUser} reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} />;
+                return <AdminDashboard setCurrentPage={setCurrentPage} currentUser={currentUser} reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} handleLogout={handleLogout} />;
             case PAGE.HISTORY:
-                return <ReportHistory reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} isAuthReady={isAuthReady} userId={userId} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+                return <ReportHistory reportsHistory={reportsHistory} loadReportFromHistory={loadReportFromHistory} deleteReport={deleteReport} isAuthReady={isAuthReady} userId={userId} setCurrentPage={setCurrentPage} currentUser={currentUser} handleLogout={handleLogout} />;
             default: return <AuthPage setCurrentPage={setCurrentPage} setErrorMessage={setErrorMessage} errorMessage={errorMessage} db={db} auth={auth} />;
         }
     };
@@ -974,7 +984,7 @@ const App = () => {
                 @media print { body * { visibility: hidden; } #admin-print-area, #admin-print-area * { visibility: visible; } #admin-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; } .no-print { display: none; } }
             `}</style>
             <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
-           <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} userId={userId} />
+            <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} userId={userId} />
         </div>
     );
 };
