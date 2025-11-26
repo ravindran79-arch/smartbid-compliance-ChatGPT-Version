@@ -794,7 +794,7 @@ const App = () => {
         return () => unsubscribeSnapshot && unsubscribeSnapshot();
     }, [userId, currentUser]);
 
-    // --- EFFECT 4: Load Libraries ---
+// --- EFFECT 4: Load Libraries & Check Payment ---
     useEffect(() => {
         const loadScript = (src) => {
             return new Promise((resolve, reject) => {
@@ -815,12 +815,16 @@ const App = () => {
         };
         loadAllLibraries();
         
-        // Check for Payment Success Redirect
+        // --- PAYMENT SUCCESS HANDLER ---
         const params = new URLSearchParams(window.location.search);
-        if (params.get('client_reference_id')) {
+        // 1. Check for the flag we set in Stripe
+        if (params.get('payment_success') === 'true') {
+             // 2. Show the "Pro Mode" Celebration Banner
+             setErrorMessage("🏆 SUCCESS: Payment Received! You are now in SmartBids Pro Mode.");
+             // 3. Clean the URL so the user doesn't see the query param
              window.history.replaceState({}, document.title, "/");
         }
-    }, []); 
+    }, []);
 
     const incrementUsage = async () => {
         if (!db || !userId) return;
