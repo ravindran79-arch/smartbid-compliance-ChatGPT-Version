@@ -231,7 +231,7 @@ const FormInput = ({ label, name, value, onChange, type, placeholder, id }) => (
 const PaywallModal = ({ show, onClose, userId }) => {
     if (!show) return null;
     
-    // ✅ STRIPE LINK
+    // 🚨 YOUR LIVE STRIPE LINK 🚨
     const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_cNi00i4JHdOmdTT8VJafS00"; 
 
     const handleUpgrade = () => {
@@ -540,7 +540,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
         setIsSubmitting(true);
         try {
             await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-            // No direct navigation here; App effect handles it
+            // No direct navigation here; App effect handles role-based redirect
         } catch (err) {
             console.error('Login error', err);
             setErrorMessage(err.message || 'Login failed.');
@@ -677,27 +677,39 @@ const AuditPage = ({ title, handleAnalyze, usageLimits, setCurrentPage, currentU
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-3">
                     <h2 className="text-2xl font-bold text-white">{title}</h2>
                     <div className="text-right">
-                        {currentUser?.role === 'ADMIN' ? <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p> : 
-                         usageLimits.isSubscribed ? (
-                            <button 
-                                onClick={async () => {
-                                    try {
-                                        const res = await fetch('/api/create-portal-session', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ userId })
-                                        });
-                                        const data = await res.json();
-                                        if (data.url) window.location.href = data.url;
-                                        else alert("Could not access billing portal. " + (data.error || ""));
-                                    } catch (e) { console.error(e); alert("Connection failed."); }
-                                }}
-                                className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500 text-amber-400 text-xs font-bold inline-flex items-center hover:bg-amber-500/30 transition"
-                            >
-                                <Award className="w-3 h-3 mr-1" /> Manage Subscription
-                            </button>
-                         ) :
-                         <p className="text-xs text-slate-400">Audits Used: <span className={usageLimits.bidderChecks >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>{usageLimits.bidderChecks}/{MAX_FREE_AUDITS}</span></p>}
+                        {currentUser?.role === 'ADMIN' ? (
+                            <p className="text-xs text-green-400 font-bold">Admin Mode: Unlimited</p>
+                        ) : usageLimits.isSubscribed ? (
+                            <div className="flex flex-col items-end space-y-1">
+                                <div className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500 text-amber-400 text-xs font-bold inline-flex items-center">
+                                    <Award className="w-3 h-3 mr-1" /> Status: SmartBids Pro Subscribed
+                                </div>
+                                <button 
+                                    onClick={async () => {
+                                        try {
+                                            const res = await fetch('/api/create-portal-session', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ userId })
+                                            });
+                                            const data = await res.json();
+                                            if (data.url) window.location.href = data.url;
+                                            else alert("Could not access billing portal. " + (data.error || ""));
+                                        } catch (e) { console.error(e); alert("Connection failed."); }
+                                    }}
+                                    className="text-xs text-slate-400 hover:text-red-400 flex items-center transition-colors underline decoration-dotted"
+                                >
+                                    To Unsubscribe
+                                </button>
+                                <p className="text-[10px] text-slate-500 italic">Cancellation will Occur at the End of the Billing Period</p>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400">
+                                Audits Used: <span className={usageLimits.bidderChecks >= MAX_FREE_AUDITS ? "text-red-500" : "text-green-500"}>
+                                    {usageLimits.bidderChecks}/{MAX_FREE_AUDITS}
+                                </span>
+                            </p>
+                        )}
                         <button onClick={handleLogout} className="text-sm text-slate-400 hover:text-amber-500 block ml-auto mt-1">Logout</button>
                     </div>
                 </div>
