@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
@@ -575,7 +576,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                         <div className="mt-4 text-[10px] text-slate-500 text-center leading-tight">
                             By registering, you agree to our 
                             <a 
-                                href="https://img1.wsimg.com/blobby/go/e7a89444-89f8-4812-8ce7-eba19bcc7358/downloads/fa06a071-2930-49be-a04e-de1ca9d015c5/TERMS%20OF%20SERVICE%20(SmartBids).pdf?ver=1764277948129" 
+                                href="https://img1.wsimg.com/blobby/go/203a0c5d-2209-4c66-b0c4-991df2124bd3/downloads/0c0d3149-68a2-42ef-abeb-f0c82323cfef/TERMS%20OF%20SERVICE.pdf?ver=1764379110939" 
                                 target="_blank" 
                                 rel="noreferrer" 
                                 className="text-blue-400 hover:underline mx-1"
@@ -584,7 +585,7 @@ const AuthPage = ({ setCurrentPage, setErrorMessage, errorMessage, db, auth }) =
                             </a>
                             and 
                             <a 
-                                href="https://img1.wsimg.com/blobby/go/e7a89444-89f8-4812-8ce7-eba19bcc7358/downloads/34bedb1f-7818-40f1-9435-cc51328ba40f/PRIVACY%20POLICY%20(SmartBids).pdf?ver=1764277948129" 
+                                href="https://img1.wsimg.com/blobby/go/203a0c5d-2209-4c66-b0c4-991df2124bd3/downloads/1a00cf64-6cab-4f3d-89c1-f370755ca03c/PRIVACY%20POLICY.pdf?ver=1764379110939" 
                                 target="_blank" 
                                 rel="noreferrer" 
                                 className="text-blue-400 hover:underline mx-1"
