@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
     FileUp, Send, Loader2, AlertTriangle, CheckCircle, List, FileText, BarChart2,
@@ -19,14 +18,8 @@ import {
 } from 'firebase/firestore'; 
 
 // --- FIREBASE INITIALIZATION ---
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
-};
+// Using environment-provided global config to avoid build target issues
+const firebaseConfig = JSON.parse(__firebase_config);
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1050,7 +1043,7 @@ const App = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100">
+        <div className="min-h-screen bg-slate-900 font-body p-4 sm:p-8 text-slate-100 flex flex-col">
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&display=swap');
                 .font-body, .font-body * { font-family: 'Lexend', sans-serif !important; }
@@ -1072,7 +1065,23 @@ const App = () => {
                     .no-print { display: none !important; } 
                 }
             `}</style>
-            <div className="max-w-4xl mx-auto space-y-10">{renderPage()}</div>
+            
+            {/* Added: Company Logo at Top Left */}
+            <div className="w-full max-w-7xl mx-auto mb-2 flex justify-start">
+                 <img 
+                    src="ronav-ai logo - option 3.jpg" 
+                    alt="ronav-ai logo" 
+                    className="h-16 w-auto object-contain rounded-lg"
+                 />
+            </div>
+
+            <div className="max-w-4xl mx-auto space-y-10 w-full flex-grow">{renderPage()}</div>
+            
+            {/* Added: Copyright Footer */}
+            <footer className="mt-12 py-6 text-center text-slate-500 text-sm border-t border-slate-800 w-full max-w-4xl mx-auto">
+                Copyright © 2025 <a href="https://ronavai.godaddysites.com/" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-400 font-medium">ronav-ai</a> - All Rights Reserved.
+            </footer>
+
             <PaywallModal show={showPaywall} onClose={() => setShowPaywall(false)} userId={userId} />
         </div>
     );
